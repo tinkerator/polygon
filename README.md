@@ -12,6 +12,10 @@ zappem.net/pub/math/polygon`. It can also be browsed on the
 [go.dev](http://go.dev) website: [package
 zappem.net/pub/math/polygon](https://pkg.go.dev/zappem.net/pub/math/polygon).
 
+## Example
+
+See the https://github.com/tinkerator/polygons example.
+
 ## License info
 
 The `polygon` package is distributed with the same BSD 3-clause
