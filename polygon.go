@@ -92,8 +92,11 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	bbCD0, bbCD1 := BB(c, d)
 	left = isLeft(a, c, d)
 	hold = isLeft(c, a, b)
-	if bbAB0.X >= bbCD1.X || bbAB1.X <= bbCD0.X ||
-		bbAB0.Y >= bbCD1.Y || bbAB1.Y <= bbCD0.Y {
+	// Do line bounding boxes not come close to overlapping each other?
+	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
+		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
+		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD0.Y) > Zeroish) ||
+		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
 		return
 	}
 	// Overlapping bounding box.
@@ -121,7 +124,23 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	} else if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
 		return // parallel but not co-linear.
 	} else {
-		log.Printf("TODO co-linear lines: %v->%v vs %v->%v", a, b, c, d)
+		if a == c {
+			// ignore situation where the two lines start from the same place.
+			return
+		}
+		if hit = (a == d); hit {
+			at = d
+			return
+		}
+		if hit = (c == b); hit {
+			at = c
+			return
+		}
+		if hit = (b == d); hit {
+			at = d
+			return
+		}
+		log.Printf("TODO unhandled co-linear lines: %v->%v vs %v->%v", a, b, c, d)
 		return
 	}
 	hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
@@ -279,16 +298,16 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			holds = holds != hold
 			if hit {
 				hits[e] = true
-				if !MatchPoint(e, a, b) {
-					tmp := append([]Point{e}, p1.PS[i+1:]...)
-					p1.PS = append(p1.PS[:i+1], tmp...)
-					b = e
-				}
 				if !MatchPoint(e, c, d) {
 					tmp := append([]Point{e}, p2.PS[j+1:]...)
 					p2.PS = append(p2.PS[:j+1], tmp...)
 					// possible the next intersection will be "before" this hit.
 					j--
+				}
+				if !MatchPoint(e, a, b) {
+					tmp := append([]Point{e}, p1.PS[i+1:]...)
+					p1.PS = append(p1.PS[:i+1], tmp...)
+					b = e
 				}
 			}
 		}
