@@ -195,12 +195,13 @@ func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
 		if maxY < v.Y || j == 0 {
 			maxY = v.Y
 		}
-		if j != 0 && (v.X < minX || (v.X == minX && v.Y < ps[zPt].Y)) {
+		if j != 0 && (v.X < ps[zPt].X || (v.X == ps[zPt].X && v.Y < ps[zPt].Y)) {
 			zPt = len(ps)
 		}
 		ps = append(ps, v)
 	}
-	ps = append(ps[zPt:], append(ps[:zPt])...)
+	tmp := append([]Point{}, ps[zPt:]...)
+	ps = append(tmp, ps[:zPt]...)
 	d1X, d1Y := ps[0].X-ps[len(ps)-1].X, ps[0].Y-ps[len(ps)-1].Y
 	d2X, d2Y := ps[1].X-ps[0].X, ps[1].Y-ps[0].Y
 	hole := (d1X*d2Y - d1Y*d2X) < 0
@@ -319,7 +320,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			banked = -1
 		}
 		if !outside && p1.Hole == p2.Hole {
-			log.Printf("TODO n=%d should be swallowed by m=%d", n, m)
+			log.Printf("TODO n=%d should be swallowed by m=%d %v %v", n, m, p1, p2)
 		}
 		return
 	}
@@ -425,8 +426,8 @@ func (p *Shapes) Union() {
 	for i := 1; i < len(p.P); i++ {
 		for j := i; j < len(p.P); j++ {
 			j += p.combine(i-1, j)
-			if j+1 < len(p.P) && p.P[i-1].MaxY < p.P[j+1].MinY {
-				break // next polygon too high to overlap with base comparison
+			if j+1 < len(p.P) && p.P[i-1].MaxX < p.P[j+1].MinX {
+				break // next polygon too far right to overlap
 			}
 		}
 	}

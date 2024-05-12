@@ -193,3 +193,48 @@ func TestUnion(t *testing.T) {
 		}
 	}
 }
+
+func TestTrace(t *testing.T) {
+	pts := [][]Point{
+		[]Point{{X: 97.35, Y: 68.58}, {X: 97.23, Y: 68.80}, {X: 96.98, Y: 68.80}, {X: 96.85, Y: 68.58}, {X: 96.98, Y: 68.36}, {X: 97.23, Y: 68.36}},
+		[]Point{{X: 91.44, Y: 68.33}, {X: 97.10, Y: 68.33}, {X: 97.10, Y: 68.83}, {X: 91.44, Y: 68.83}},
+		[]Point{{X: 91.69, Y: 68.58}, {X: 91.57, Y: 68.80}, {X: 91.32, Y: 68.80}, {X: 91.19, Y: 68.58}, {X: 91.32, Y: 68.36}, {X: 91.57, Y: 68.36}},
+	}
+	var s *Shapes
+	for i, ps := range pts {
+		var err error
+		s, err = s.Append(ps...)
+		if err != nil {
+			t.Fatalf("shape=%d failed import: %v", i, err)
+		}
+		s.Union()
+		if len(s.P) != 1 {
+			t.Fatalf("after shape=%d unioned, got=%d shapes, want=1: %v", i, len(s.P), s.P)
+		}
+	}
+	us := s.P[0].PS
+	expect := []Point{
+		{X: 91.19, Y: 68.58},
+		{X: 91.32, Y: 68.36},
+		{X: 91.44, Y: 68.36},
+		{X: 91.44, Y: 68.33},
+		{X: 97.10, Y: 68.33},
+		{X: 97.10, Y: 68.36},
+		{X: 97.23, Y: 68.36},
+		{X: 97.35, Y: 68.58},
+		{X: 97.23, Y: 68.80},
+		{X: 97.10, Y: 68.80},
+		{X: 97.10, Y: 68.83},
+		{X: 91.44, Y: 68.83},
+		{X: 91.44, Y: 68.80},
+		{X: 91.32, Y: 68.80},
+	}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+}
