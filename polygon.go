@@ -80,73 +80,6 @@ func isLeft(a, b, c Point) (left bool) {
 	return
 }
 
-// intersect determines if two line segments (a->b) and (c->d)
-// intersect (hit) and returns the point that they intersect. It also
-// determines if the point a is to the left of the line (c->d).  The
-// point c is evaluated for its leftness to (a->b) and this value is
-// returned as hold.
-func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
-	dABX, dABY := (b.X - a.X), (b.Y - a.Y)
-	dCDX, dCDY := (d.X - c.X), (d.Y - c.Y)
-	bbAB0, bbAB1 := BB(a, b)
-	bbCD0, bbCD1 := BB(c, d)
-	left = isLeft(a, c, d)
-	hold = isLeft(c, a, b)
-	// Do line bounding boxes not come close to overlapping each other?
-	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
-		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
-		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD0.Y) > Zeroish) ||
-		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
-		return
-	}
-	// Overlapping bounding box.
-	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
-	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
-	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish {
-		if math.Abs(dABX) < Zeroish {
-			at.X = a.X
-			mCD := dCDY / dCDX
-			cCD := d.Y - mCD*d.X
-			at.Y = cCD + mCD*a.X
-		} else if math.Abs(dCDX) < Zeroish {
-			at.X = d.X
-			mAB := dABY / dABX
-			cAB := a.Y - mAB*a.X
-			at.Y = cAB + mAB*d.X
-		} else {
-			mAB := dABY / dABX
-			mCD := dCDY / dCDX
-			cAB := a.Y - mAB*a.X
-			cCD := d.Y - mCD*d.X
-			at.X = -(cAB - cCD) / (mAB - mCD)
-			at.Y = cAB + mAB*at.X
-		}
-	} else if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
-		return // parallel but not co-linear.
-	} else {
-		if a == c {
-			// ignore situation where the two lines start from the same place.
-			return
-		}
-		if hit = MatchPoint(a, d); hit {
-			at = d
-			return
-		}
-		if hit = MatchPoint(c, b); hit {
-			at = c
-			return
-		}
-		if hit = MatchPoint(b, d); hit {
-			at = d
-			return
-		}
-		log.Printf("TODO unhandled co-linear lines: %v->%v vs %v->%v", a, b, c, d)
-		return
-	}
-	hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
-	return
-}
-
 // Shape holds the points in a polygon and some convenience fields,
 // such as the properties of its bounding box and whether the
 // perimeter is clockwise (by convention a Hole) or counterclockwise
@@ -269,6 +202,81 @@ func MatchPoint(a Point, b ...Point) bool {
 		}
 	}
 	return false
+}
+
+// intersect determines if two line segments (a->b) and (c->d)
+// intersect (hit) and returns the point that they intersect. It also
+// determines if the point a is to the left of the line (c->d).  The
+// point c is evaluated for its leftness to (a->b) and this value is
+// returned as hold.
+func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
+	dABX, dABY := (b.X - a.X), (b.Y - a.Y)
+	dCDX, dCDY := (d.X - c.X), (d.Y - c.Y)
+	bbAB0, bbAB1 := BB(a, b)
+	bbCD0, bbCD1 := BB(c, d)
+	left = isLeft(a, c, d)
+	hold = isLeft(c, a, b)
+	// Do line bounding boxes not come close to overlapping each other?
+	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
+		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
+		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD0.Y) > Zeroish) ||
+		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
+		return
+	}
+	// Overlapping bounding box (extended slightly by the rounding error protection).
+	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
+	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
+	if bb0.X == bb1.X {
+		bb0.X -= Zeroish / 2
+		bb1.X += Zeroish / 2
+	}
+	if bb0.Y == bb1.Y {
+		bb0.Y -= Zeroish / 2
+		bb1.Y += Zeroish / 2
+	}
+	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish {
+		if math.Abs(dABX) < Zeroish {
+			at.X = a.X
+			mCD := dCDY / dCDX
+			cCD := d.Y - mCD*d.X
+			at.Y = cCD + mCD*a.X
+		} else if math.Abs(dCDX) < Zeroish {
+			at.X = d.X
+			mAB := dABY / dABX
+			cAB := a.Y - mAB*a.X
+			at.Y = cAB + mAB*d.X
+		} else {
+			mAB := dABY / dABX
+			mCD := dCDY / dCDX
+			cAB := a.Y - mAB*a.X
+			cCD := d.Y - mCD*d.X
+			at.X = -(cAB - cCD) / (mAB - mCD)
+			at.Y = cAB + mAB*at.X
+		}
+	} else if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
+		return // parallel but not co-linear.
+	} else {
+		if a == c {
+			// ignore situation where the two lines start from the same place.
+			return
+		}
+		if hit = MatchPoint(a, d); hit {
+			at = d
+			return
+		}
+		if hit = MatchPoint(c, b); hit {
+			at = c
+			return
+		}
+		if hit = MatchPoint(b, d); hit {
+			at = d
+			return
+		}
+		log.Printf("TODO unhandled co-linear lines: %v->%v vs %v->%v", a, b, c, d)
+		return
+	}
+	hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
+	return
 }
 
 // combine computes the union of two Polygon shapes, indexed in p as n
