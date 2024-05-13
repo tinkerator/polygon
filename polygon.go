@@ -128,15 +128,15 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 			// ignore situation where the two lines start from the same place.
 			return
 		}
-		if hit = (a == d); hit {
+		if hit = MatchPoint(a, d); hit {
 			at = d
 			return
 		}
-		if hit = (c == b); hit {
+		if hit = MatchPoint(c, b); hit {
 			at = c
 			return
 		}
-		if hit = (b == d); hit {
+		if hit = MatchPoint(b, d); hit {
 			at = d
 			return
 		}

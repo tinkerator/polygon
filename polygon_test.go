@@ -194,6 +194,26 @@ func TestUnion(t *testing.T) {
 	}
 }
 
+func TestIntersect(t *testing.T) {
+	a := Point{X: 96.38225424859374, Y: 74.72694631307311}
+	b := Point{X: 96.35022032262698, Y: 74.75022032262696}
+	c := Point{X: 96.35022032262697, Y: 74.75022032262696}
+	d := Point{X: 96.25725424859374, Y: 74.81776412907378}
+	hit, left, hold, at := intersect(a, b, c, d)
+	if !hit {
+		t.Fatal("did not return hit")
+	}
+	if left {
+		t.Fatal("test left")
+	}
+	if !hold {
+		t.Fatal("test not hold")
+	}
+	if !MatchPoint(at, c) {
+		t.Errorf("got=%v, want=%v", at, c)
+	}
+}
+
 func TestTrace(t *testing.T) {
 	pts := [][]Point{
 		[]Point{{X: 97.35, Y: 68.58}, {X: 97.23, Y: 68.80}, {X: 96.98, Y: 68.80}, {X: 96.85, Y: 68.58}, {X: 96.98, Y: 68.36}, {X: 97.23, Y: 68.36}},
