@@ -16,10 +16,10 @@ import (
 )
 
 // Zeroish is defined to merge points and avoid rounding error
-// problems. The number is chosen to connect anything closer than 0.01
-// (which is a convenience default for values representing
+// problems. The number is chosen to connect anything closer than
+// 0.001 (which is a convenience default for values representing
 // millimeters).
-var Zeroish = 1e-4
+var Zeroish = 1e-6
 
 // Sort two numbers to be in ascending order.
 func MinMax(a, b float64) (float64, float64) {
@@ -291,9 +291,29 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	for i := 0; i < len(p1.PS); i++ {
 		a := p1.PS[i]
 		b := p1.PS[(i+1)%len(p1.PS)]
+		if MatchPoint(a, b) {
+			// trim out points that are too close together
+			if i == 0 {
+				p1.PS = append(p1.PS[:1], p1.PS[2:]...)
+			} else {
+				p1.PS = append(p1.PS[:i], p1.PS[i+1:]...)
+			}
+			i--
+			continue
+		}
 		for j := 0; j < len(p2.PS); j++ {
 			c := p2.PS[j]
 			d := p2.PS[(j+1)%len(p2.PS)]
+			if MatchPoint(c, d) {
+				// trim out points that are too close together
+				if j == 0 {
+					p2.PS = append(p2.PS[:1], p2.PS[2:]...)
+				} else {
+					p2.PS = append(p2.PS[:j], p2.PS[j+1:]...)
+				}
+				j--
+				continue
+			}
 			hit, left, hold, e := intersect(a, b, c, d)
 			outside = outside != left
 			holds = holds != hold
@@ -304,6 +324,15 @@ func (p *Shapes) combine(n, m int) (banked int) {
 					p2.PS = append(p2.PS[:j+1], tmp...)
 					// possible the next intersection will be "before" this hit.
 					j--
+				} else {
+					// Close but not equal is a source of problems, so
+					// treat a as the anchor point and move c and d to it.
+					if MatchPoint(a, c) && a != c {
+						p2.PS[j] = a
+					}
+					if MatchPoint(a, d) && a != d {
+						p2.PS[(j+1)%len(p2.PS)] = a
+					}
 				}
 				if !MatchPoint(e, a, b) {
 					tmp := append([]Point{e}, p1.PS[i+1:]...)
