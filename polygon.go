@@ -285,6 +285,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 // additional shapes from index m have been resolved. This value can
 // be negative.
 func (p *Shapes) combine(n, m int) (banked int) {
+	banked = m + 1
 	p1, p2 := p.P[n], p.P[m]
 	if p1.MinX > p2.MaxX || p1.MaxX < p1.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 		// Bounding boxes do not overlap.
@@ -294,7 +295,10 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	// polygon at a time. Record each overlapping point with a
 	// lookup table entry.
 	hits := make(map[Point]bool)
-	holds := true
+	// these are only valid if there are no intersection hits
+	// inside == n inside m
+	// outside == n outside m
+	inside := false
 	outside := true
 	for i := 0; i < len(p1.PS); i++ {
 		a := p1.PS[i]
@@ -322,9 +326,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				j--
 				continue
 			}
-			hit, left, hold, e := intersect(a, b, c, d)
-			outside = outside != left
-			holds = holds != hold
+			hit, aLeftBC, cLeftAB, e := intersect(a, b, c, d)
 			if hit {
 				hits[e] = true
 				if !MatchPoint(e, c, d) {
@@ -347,21 +349,42 @@ func (p *Shapes) combine(n, m int) (banked int) {
 					p1.PS = append(p1.PS[:i+1], tmp...)
 					b = e
 				}
+			} else {
+				if i == 0 && aLeftBC {
+					inside = !inside
+				}
+				if j == 0 && cLeftAB {
+					outside = !outside
+				}
 			}
 		}
 	}
 	if len(hits) == 0 {
-		if holds && p1.Hole == p2.Hole {
-			// since no hits and p1 holds p2, p2 is fully inside p1 - delete it
-			p.P = append(p.P[:m], p.P[m+1:]...)
-			banked = -1
+		if outside && !inside {
+			// no overlap
+			banked = m + 1
+			return
 		}
-		if !outside && p1.Hole == p2.Hole {
-			log.Printf("TODO n=%d should be swallowed by m=%d %v %v", n, m, p1, p2)
+		if outside && inside {
+			log.Print("TODO invalid computation for inside/outside-ness")
+			banked = m + 1
+			return
+		}
+		if p1.Hole != p2.Hole {
+			log.Printf("TODO non-intersecting polygons of opposite holedness (n=%d, m=%d)", n, m)
+			banked = m + 1
+			return
+		}
+		if inside {
+			log.Printf("TODO not sure this is reachable CHECK n=%d should be swallowed by m=%d %v %v", n, m, p1, p2)
+			p.P = append(p.P[:n], p.P[n+1:]...)
+			banked = n + 1
+		} else { // must be outside
+			p.P = append(p.P[:m], p.P[m+1:]...)
+			banked = m
 		}
 		return
 	}
-
 	// Need to start from a point that is guaranteed to be on the
 	// perimeter. Append() rotates the built shape to guarantee
 	// that the 0th point is on the outer hull of the shape
@@ -437,7 +460,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			}
 		}
 	}
-	banked = -1
+	banked = m
 	if poly != nil {
 		keep = append(poly.P, keep...)
 	}
@@ -457,13 +480,23 @@ func (p *Shapes) Union() {
 		} else if cmp > 0 {
 			return false
 		}
-		return p.P[a].MinY < p.P[b].MinY
+		if cmp := p.P[a].MinY - p.P[b].MinY; cmp < 0 {
+			return true
+		} else if cmp > 0 {
+			return false
+		}
+		if cmp := p.P[a].MaxX - p.P[b].MaxX; cmp > 0 {
+			return true
+		} else if cmp < 0 {
+			return false
+		}
+		return p.P[a].MaxY > p.P[b].MaxY
 	}
 	sort.Slice(p.P, cf)
 	for i := 1; i < len(p.P); i++ {
-		for j := i; j < len(p.P); j++ {
-			j += p.combine(i-1, j)
-			if j+1 < len(p.P) && p.P[i-1].MaxX < p.P[j+1].MinX {
+		for j := i; j < len(p.P); {
+			j = p.combine(i-1, j)
+			if j < len(p.P) && p.P[i-1].MaxX < p.P[j].MinX {
 				break // next polygon too far right to overlap
 			}
 		}

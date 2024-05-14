@@ -192,6 +192,60 @@ func TestUnion(t *testing.T) {
 			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
 		}
 	}
+
+	ss = nil
+	ss = ss.Builder([]Point{
+		Point{X: 1, Y: 1},
+		Point{X: 2, Y: 1},
+		Point{X: 2, Y: 2},
+		Point{X: 1, Y: 2},
+	}...).Builder([]Point{
+		Point{X: 0, Y: 0},
+		Point{X: 3, Y: 0},
+		Point{X: 3, Y: 3},
+		Point{X: 0, Y: 3},
+	}...)
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	us = ss.P[0].PS
+	expect = []Point{{0, 0}, {3, 0}, {3, 3}, {0, 3}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+
+	ss = nil
+	ss = ss.Builder([]Point{
+		Point{X: 0, Y: 0},
+		Point{X: 2, Y: 0},
+		Point{X: 2, Y: 2},
+		Point{X: 0, Y: 2},
+	}...).Builder([]Point{
+		Point{X: 0, Y: 0},
+		Point{X: 3, Y: 0},
+		Point{X: 3, Y: 3},
+		Point{X: 0, Y: 3},
+	}...)
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	us = ss.P[0].PS
+	expect = []Point{{0, 0}, {2, 0}, {3, 0}, {3, 3}, {0, 3}, {0, 2}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
 }
 
 func TestIntersect(t *testing.T) {
