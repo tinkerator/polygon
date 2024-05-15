@@ -60,24 +60,24 @@ func max(a, b float64) float64 {
 }
 
 // isLeft determines if point a is left of the line segment (b->c).
-func isLeft(a, b, c Point) (left bool) {
-	if (a.Y <= b.Y) == (a.Y <= c.Y) {
-		return // a is fully above or below (b->c)
+func isLeft(a, b, c Point) bool {
+	if ((a.Y < b.Y-Zeroish/2) && (a.Y < c.Y-Zeroish)) || ((a.Y > b.Y+Zeroish/2) && (a.Y > c.Y+Zeroish/2)) {
+		return false // a is fully above or below (b->c)
 	}
-	if b.X > a.X && c.X > a.X {
-		left = true
-		return
+	if min(b.X, c.X) > a.X {
+		return true
 	}
-	if max(b.X, c.X) <= a.X {
-		return
+	if max(b.X, c.X) < a.X {
+		return false
 	}
-	// a is horizontally within X range of BC.
-	// compare a.Y to the y value of line BC at x = a.X.
-	if y := b.Y + (c.Y-b.Y)/(c.X-b.X)*(a.X-b.X); math.Abs(a.Y-y) > Zeroish {
-		// y below a.Y and c.Y is the lower left edge of bbCD0.
-		left = (y < a.Y) == (b.Y < c.Y)
+	// a is horizontally within Y range of BC.
+	// compare a.X to the x value of line BC at y = a.Y.
+	mBC := (b.Y - c.Y) / (b.X - c.X)
+	cBC := b.Y - mBC*b.X
+	if x := (a.Y - cBC) / mBC; a.X <= x {
+		return true
 	}
-	return
+	return false
 }
 
 // Shape holds the points in a polygon and some convenience fields,
@@ -296,11 +296,15 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	// lookup table entry.
 	hits := make(map[Point]bool)
 	// these are only valid if there are no intersection hits
-	// inside == n inside m
-	// outside == n outside m
-	inside := false
-	outside := true
+	// inner == n inside m
+	// outer == m inside n
+	var inner, outer bool
 	for i := 0; i < len(p1.PS); i++ {
+		if i == 0 {
+			// start over
+			inner = false
+			outer = false
+		}
 		a := p1.PS[i]
 		b := p1.PS[(i+1)%len(p1.PS)]
 		if MatchPoint(a, b) {
@@ -351,35 +355,29 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				}
 			} else {
 				if i == 0 && aLeftBC {
-					inside = !inside
+					inner = !inner
 				}
 				if j == 0 && cLeftAB {
-					outside = !outside
+					outer = !outer
 				}
 			}
 		}
 	}
 	if len(hits) == 0 {
-		if outside && !inside {
+		if !inner && !outer {
 			// no overlap
 			banked = m + 1
 			return
 		}
-		if outside && inside {
-			log.Print("TODO invalid computation for inside/outside-ness")
-			banked = m + 1
-			return
-		}
 		if p1.Hole != p2.Hole {
-			log.Printf("TODO non-intersecting polygons of opposite holedness (n=%d, m=%d)", n, m)
 			banked = m + 1
 			return
 		}
-		if inside {
+		if inner {
 			log.Printf("TODO not sure this is reachable CHECK n=%d should be swallowed by m=%d %v %v", n, m, p1, p2)
 			p.P = append(p.P[:n], p.P[n+1:]...)
 			banked = n + 1
-		} else { // must be outside
+		} else if outer {
 			p.P = append(p.P[:m], p.P[m+1:]...)
 			banked = m
 		}
