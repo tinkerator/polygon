@@ -204,6 +204,19 @@ func MatchPoint(a Point, b ...Point) bool {
 	return false
 }
 
+// Dot computes the dot product of two vectors.
+func (a Point) Dot(b Point) float64 {
+	return a.X*b.X + a.Y*b.Y
+}
+
+// moreClockwise confirms that c is more clockwise than d from b.
+func moreClockwise(b, c, d Point) bool {
+	bc := Point{c.X - b.X, c.Y - b.Y}
+	bd := Point{d.X - b.X, d.Y - b.Y}
+	crossBCBD := bc.X*bd.Y - bc.Y*bd.X
+	return crossBCBD >= 0
+}
+
 // intersect determines if two line segments (a->b) and (c->d)
 // intersect (hit) and returns the point that they intersect. It also
 // determines if the point a is to the left of the line (c->d).  The
@@ -264,18 +277,48 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 			at = d
 			return
 		}
-		if hit = MatchPoint(c, b); hit {
-			at = c
-			return
-		}
 		if hit = MatchPoint(b, d); hit {
 			at = d
 			return
 		}
-		log.Printf("TODO unhandled co-linear lines: %v->%v vs %v->%v", a, b, c, d)
+		if hit = MatchPoint(c, b); hit {
+			at = c
+			return
+		}
+		if dot := (b.X-a.X)*(d.X-c.X) + (b.Y-a.Y)*(d.Y-c.Y); dot > 0 {
+			at = b
+			hit = true
+		} else {
+			at = c
+			hit = true
+		}
 		return
 	}
 	hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
+	return
+}
+
+// dissolve eliminates collinear points from a polygon.
+func (s *Shape) dissolve() (dissolved bool) {
+	if s == nil {
+		return
+	}
+	for i := 0; i < len(s.PS); {
+		a := s.PS[i]
+		bI := (i + 1) % len(s.PS)
+		b := s.PS[bI] // evaluate whether to delete this
+		c := s.PS[(i+2)%len(s.PS)]
+		ac := Point{c.X - a.X, c.Y - a.Y}
+		ab := Point{b.X - a.X, b.Y - a.Y}
+		dot := ac.Dot(ab)
+		cmp := ac.Dot(ac) * ab.Dot(ab)
+		if math.Abs(dot*dot-cmp) < Zeroish {
+			s.PS = append(s.PS[:bI], s.PS[bI+1:]...)
+			dissolved = true
+		} else {
+			i++
+		}
+	}
 	return
 }
 
@@ -386,7 +429,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	// Need to start from a point that is guaranteed to be on the
 	// perimeter. Append() rotates the built shape to guarantee
 	// that the 0th point is on the outer hull of the shape
-	// (leftmost lower corner).
+	// (leftmost or lowest left).
 	union := &Shape{
 		MinX: min(p1.MinX, p2.MinX),
 		MinY: min(p1.MinY, p2.MinY),
@@ -418,14 +461,21 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			if !lockedOn {
 				lockedOn = true
 			}
-			i++
-			src1, src2 = src2, src1
-			i, j = j, i
-			offset1, offset2 = offset2, offset1
-			extra1, extra2 = extra2, extra1
+			ptKeep := src1[(offset1+i+1)%len(src1)]
+			ptSwap := src2[(offset2+j+1)%len(src2)]
+			if moreClockwise(pt1, ptSwap, ptKeep) {
+				i++
+				src1, src2 = src2, src1
+				i, j = j, i
+				offset1, offset2 = offset2, offset1
+				extra1, extra2 = extra2, extra1
+			}
 		}
 		i++
 		union.PS = append(union.PS, pt1)
+	}
+	if was := len(union.PS); union.dissolve() && was < len(union.PS) {
+		log.Printf("dissolved negative points was=%d, is=%d", was, len(union.PS))
 	}
 	rest := p.P[m+1:]
 	keep := append([]*Shape{}, p.P[n+1:m]...)
