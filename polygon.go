@@ -508,7 +508,10 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			}
 		}
 	}
-	banked = m
+	// The merged polygon may overlap with a previously
+	// non-overlapping polygon, so backtrack to the one
+	// immediately after this merged polygon.
+	banked = n + 1
 	if poly != nil {
 		keep = append(poly.P, keep...)
 	}

@@ -87,15 +87,15 @@ func TestUnion(t *testing.T) {
 	// Validate coincident heavy overlaps.
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 1, Y: 1},
-		Point{X: 2, Y: 1},
-		Point{X: 2, Y: 2},
-		Point{X: 1, Y: 2},
+		{X: 1, Y: 1},
+		{X: 2, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 2},
 	}...).Builder([]Point{
-		Point{X: 0, Y: 0},
-		Point{X: 1.5, Y: 0},
-		Point{X: 1.5, Y: 1},
-		Point{X: 0, Y: 1},
+		{X: 0, Y: 0},
+		{X: 1.5, Y: 0},
+		{X: 1.5, Y: 1},
+		{X: 0, Y: 1},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -114,15 +114,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 1, Y: 1},
-		Point{X: 2, Y: 1},
-		Point{X: 2, Y: 2},
-		Point{X: 1, Y: 2},
+		{X: 1, Y: 1},
+		{X: 2, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 2},
 	}...).Builder([]Point{
-		Point{X: 2, Y: 0},
-		Point{X: 3, Y: 0},
-		Point{X: 3, Y: 2},
-		Point{X: 2, Y: 2},
+		{X: 2, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 2},
+		{X: 2, Y: 2},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -141,15 +141,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 1, Y: 1},
-		Point{X: 2, Y: 1},
-		Point{X: 2, Y: 2},
-		Point{X: 1, Y: 2},
+		{X: 1, Y: 1},
+		{X: 2, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 2},
 	}...).Builder([]Point{
-		Point{X: 2, Y: 0},
-		Point{X: 3, Y: 0},
-		Point{X: 3, Y: 3},
-		Point{X: 2, Y: 3},
+		{X: 2, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 3},
+		{X: 2, Y: 3},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -168,15 +168,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 1, Y: 0},
-		Point{X: 2, Y: 0},
-		Point{X: 2, Y: 3},
-		Point{X: 1, Y: 3},
+		{X: 1, Y: 0},
+		{X: 2, Y: 0},
+		{X: 2, Y: 3},
+		{X: 1, Y: 3},
 	}...).Builder([]Point{
-		Point{X: 2, Y: 1},
-		Point{X: 3, Y: 1},
-		Point{X: 3, Y: 2},
-		Point{X: 2, Y: 2},
+		{X: 2, Y: 1},
+		{X: 3, Y: 1},
+		{X: 3, Y: 2},
+		{X: 2, Y: 2},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -195,15 +195,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 1, Y: 1},
-		Point{X: 2, Y: 1},
-		Point{X: 2, Y: 2},
-		Point{X: 1, Y: 2},
+		{X: 1, Y: 1},
+		{X: 2, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 2},
 	}...).Builder([]Point{
-		Point{X: 0, Y: 0},
-		Point{X: 3, Y: 0},
-		Point{X: 3, Y: 3},
-		Point{X: 0, Y: 3},
+		{X: 0, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 3},
+		{X: 0, Y: 3},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -222,15 +222,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 0, Y: 0},
-		Point{X: 2, Y: 0},
-		Point{X: 2, Y: 2},
-		Point{X: 0, Y: 2},
+		{X: 0, Y: 0},
+		{X: 2, Y: 0},
+		{X: 2, Y: 2},
+		{X: 0, Y: 2},
 	}...).Builder([]Point{
-		Point{X: 0, Y: 0},
-		Point{X: 3, Y: 0},
-		Point{X: 3, Y: 3},
-		Point{X: 0, Y: 3},
+		{X: 0, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 3},
+		{X: 0, Y: 3},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -249,15 +249,15 @@ func TestUnion(t *testing.T) {
 
 	ss = nil
 	ss = ss.Builder([]Point{
-		Point{X: 0, Y: 0},
-		Point{X: 3, Y: 0},
-		Point{X: 3, Y: 1},
-		Point{X: 0, Y: 1},
+		{X: 0, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 1},
+		{X: 0, Y: 1},
 	}...).Builder([]Point{
-		Point{X: 2, Y: 0},
-		Point{X: 4, Y: 0},
-		Point{X: 4, Y: 2},
-		Point{X: 2, Y: 2},
+		{X: 2, Y: 0},
+		{X: 4, Y: 0},
+		{X: 4, Y: 2},
+		{X: 2, Y: 2},
 	}...)
 	ss.Union()
 	if len(ss.P) != 1 {
@@ -265,6 +265,41 @@ func TestUnion(t *testing.T) {
 	}
 	us = ss.P[0].PS
 	expect = []Point{{0, 0}, {4, 0}, {4, 2}, {2, 2}, {2, 1}, {0, 1}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+
+	ss = nil
+	ss = ss.Builder([]Point{
+		{X: 0, Y: 0},
+		{X: 5, Y: 0},
+		{X: 5, Y: 1},
+		{X: 0, Y: 1},
+	}...).Builder([]Point{
+		{X: 1, Y: 2},
+		{X: 5, Y: 2},
+		{X: 5, Y: 3},
+		{X: 1, Y: 3},
+	}...).Builder([]Point{
+		{X: 4, Y: 0},
+		{X: 5, Y: 0},
+		{X: 5, Y: 3},
+		{X: 4, Y: 3},
+	}...)
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Errorf("expecting a single poly, but got %d", len(ss.P))
+		for i := 0; i < len(ss.P); i++ {
+			t.Errorf("P[%d] = %#v", i, *ss.P[i])
+		}
+	}
+	us = ss.P[0].PS
+	expect = []Point{{0, 0}, {5, 0}, {5, 3}, {1, 3}, {1, 2}, {4, 2}, {4, 1}, {0, 1}}
 	if len(us) != len(expect) {
 		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
 	}
