@@ -37,9 +37,9 @@ type Point struct {
 }
 
 // BB determines the bounding box LL and TR corner points.
-func BB(a, b Point) (c0, c1 Point) {
-	c0.X, c1.X = MinMax(a.X, b.X)
-	c0.Y, c1.Y = MinMax(a.Y, b.Y)
+func BB(a, b Point) (ll, tr Point) {
+	ll.X, tr.X = MinMax(a.X, b.X)
+	ll.Y, tr.Y = MinMax(a.Y, b.Y)
 	return
 }
 
@@ -96,10 +96,31 @@ type Shape struct {
 	PS []Point
 }
 
+// Return the bounding box lower left and top right corner points for
+// the shape.
+func (s *Shape) BB() (ll, tr Point) {
+	return Point{s.MinX, s.MinY}, Point{s.MaxX, s.MaxY}
+}
+
 // Shapes holds a set of polygon shapes each of arrays of (x,y)
 // points.
 type Shapes struct {
 	P []*Shape
+}
+
+// Return the bounding box lower left and top right corner points for
+// the shapes.
+func (s *Shapes) BB() (ll, tr Point) {
+	for i, p := range s.P {
+		if i == 0 {
+			ll, tr = p.BB()
+		} else {
+			ll2, tr2 := p.BB()
+			ll, _ = BB(ll, ll2)
+			_, tr = BB(tr, tr2)
+		}
+	}
+	return
 }
 
 // Append appends a polygon shape constructed from a series of
@@ -552,4 +573,43 @@ func (p *Shapes) Union() {
 			}
 		}
 	}
+}
+
+// Inflate inflates an indexed shape by distance, d. Holes are
+// deflated by this amount. If we inflate a circle by d, its diameter
+// will increase by that much.
+func (s *Shapes) Inflate(n int, d float64) error {
+	if n < 0 || n >= len(s.P) {
+		return fmt.Errorf("invalid polygon=%d in shapes (%d known)", n, len(s.P))
+	}
+	if d == 0 {
+		return nil // nothing needed
+	}
+	p := s.P[n]
+	first := p.PS[0]
+	last := p.PS[len(p.PS)-1]
+	d *= 0.5 // Since we add an offset twice per point.
+	for i, this := range p.PS {
+		pre := this
+		next := first
+		if i < len(p.PS)-1 {
+			next = p.PS[i+1]
+		}
+
+		dX, dY := this.X-last.X, this.Y-last.Y
+		r := math.Sqrt(dX*dX + dY*dY)
+		dX, dY = d*dX/r, d*dY/r
+		this.X += dY
+		this.Y -= dX
+
+		dX, dY = next.X-pre.X, next.Y-pre.Y
+		r = math.Sqrt(dX*dX + dY*dY)
+		dX, dY = d*dX/r, d*dY/r
+		this.X += dY
+		this.Y -= dX
+
+		p.PS[i] = this
+		last = pre
+	}
+	return nil
 }

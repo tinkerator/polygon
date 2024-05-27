@@ -674,3 +674,17 @@ func TestTrace(t *testing.T) {
 		}
 	}
 }
+
+func TestInflate(t *testing.T) {
+	var s *Shapes
+	s = s.Builder([]Point{{1, 1}, {2, 1}, {2, 2}, {1, 2}}...)
+	if err := s.Inflate(0, 2); err != nil {
+		t.Fatalf("unable to inflate shape 0 by 1: %v", err)
+	}
+	expect := []Point{{0, 0}, {3, 0}, {3, 3}, {0, 3}}
+	for i, got := range s.P[0].PS {
+		if want := expect[i]; !MatchPoint(got, want) {
+			t.Errorf("inflated point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+}
