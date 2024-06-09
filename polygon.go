@@ -125,7 +125,9 @@ func (s *Shapes) BB() (ll, tr Point) {
 
 // Append appends a polygon shape constructed from a series of
 // consecutive points. If p is nil, it is allocated. The return value
-// is the appended collection of shapes.
+// is the appended collection of shapes. The newly added polygon is
+// the last one, and it's zeroth point is guaranteed to be leftmost
+// and lowest.
 func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
 	if len(pts) < 3 {
 		return p, fmt.Errorf("polygon requires 3 or more points: got=%d", len(pts))
@@ -541,11 +543,10 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	return
 }
 
-// Union tries to combine all of the shape outlines into union outlines.
-func (p *Shapes) Union() {
-	// sort all of the polygons by their bounding boxes left to
-	// right, down to up. This guarantees that the left most point
-	// of the 0th polygon is an outer point.
+// Reorder sorts all of the polygons by their bounding boxes left to
+// right, down to up. This guarantees that the left most point of the
+// 0th polygon is an outer point.
+func (p *Shapes) Reorder() {
 	cf := func(a, b int) bool {
 		if cmp := p.P[a].MinX - p.P[b].MinX; cmp < 0 {
 			return true
@@ -565,6 +566,11 @@ func (p *Shapes) Union() {
 		return p.P[a].MaxY > p.P[b].MaxY
 	}
 	sort.Slice(p.P, cf)
+}
+
+// Union tries to combine all of the shape outlines into union outlines.
+func (p *Shapes) Union() {
+	p.Reorder()
 	for i := 1; i < len(p.P); i++ {
 		for j := i; j < len(p.P); {
 			j = p.combine(i-1, j)
