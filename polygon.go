@@ -289,6 +289,11 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 			at.X = -(cAB - cCD) / (mAB - mCD)
 			at.Y = cAB + mAB*at.X
 		}
+		if MatchPoint(a, at) {
+			at = a
+		} else if MatchPoint(b, at) {
+			at = b
+		}
 	} else if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
 		return // parallel but not co-linear.
 	} else {
@@ -297,15 +302,15 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 			return
 		}
 		if hit = MatchPoint(a, d); hit {
-			at = d
+			at = a
 			return
 		}
 		if hit = MatchPoint(b, d); hit {
-			at = d
+			at = b
 			return
 		}
-		if hit = MatchPoint(c, b); hit {
-			at = c
+		if hit = MatchPoint(b, c); hit {
+			at = b
 			return
 		}
 		if dot := (b.X-a.X)*(d.X-c.X) + (b.Y-a.Y)*(d.Y-c.Y); dot > 0 {
@@ -386,8 +391,20 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		for j := 0; j < len(p2.PS); j++ {
 			c := p2.PS[j]
 			d := p2.PS[(j+1)%len(p2.PS)]
+			// Close but not equal is a source of
+			// problems, so given a close match treat a as
+			// the anchor point and move c and/or d to it.
+			if MatchPoint(a, c) && a != c {
+				p2.PS[j] = a
+				c = a
+			}
+			if MatchPoint(a, d) && a != d {
+				p2.PS[(j+1)%len(p2.PS)] = a
+				d = a
+			}
 			if MatchPoint(c, d) {
 				// trim out points that are too close together
+				// preserve the 0th point.
 				if j == 0 {
 					p2.PS = append(p2.PS[:1], p2.PS[2:]...)
 				} else {
@@ -404,15 +421,6 @@ func (p *Shapes) combine(n, m int) (banked int) {
 					p2.PS = append(p2.PS[:j+1], tmp...)
 					// possible the next intersection will be "before" this hit.
 					j--
-				} else {
-					// Close but not equal is a source of problems, so
-					// treat a as the anchor point and move c and d to it.
-					if MatchPoint(a, c) && a != c {
-						p2.PS[j] = a
-					}
-					if MatchPoint(a, d) && a != d {
-						p2.PS[(j+1)%len(p2.PS)] = a
-					}
 				}
 				if !MatchPoint(e, a, b) {
 					tmp := append([]Point{e}, p1.PS[i+1:]...)

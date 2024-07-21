@@ -308,6 +308,33 @@ func TestUnion(t *testing.T) {
 			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
 		}
 	}
+
+	ss = nil
+	ss = ss.Builder([]Point{
+		{X: 0.0000002, Y: 2},
+		{X: 1, Y: 2},
+		{X: 1, Y: 3},
+		{X: 0, Y: 3},
+	}...).Builder([]Point{
+		{X: 0.0000001, Y: 2},
+		{X: 1, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 3},
+	}...)
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	us = ss.P[0].PS
+	expect = []Point{{0, 3}, {0.0000002, 2}, {1, 1}, {2, 2}, {1, 3}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
 }
 
 func TestIntersect(t *testing.T) {
@@ -663,6 +690,68 @@ func TestTrace(t *testing.T) {
 		{X: 92.115, Y: 68.83},
 		{X: 92.115, Y: 69.255},
 		{X: 90.765, Y: 69.255},
+	}
+	us = s.P[0].PS
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points, but see=%d points: got=%#v, want=%#v", len(expect), len(us), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; !MatchPoint(got, want) {
+			t.Errorf("point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+
+	pts = [][]Point{
+		[]Point{
+			{X: 93.0525, Y: 76.16},
+			{X: 93.11107864376268, Y: 76.01857864376268},
+			{X: 93.2525, Y: 75.96},
+			{X: 93.39392135623731, Y: 76.01857864376268},
+			{X: 93.4525, Y: 76.16},
+			{X: 93.39392135623731, Y: 76.30142135623731},
+			{X: 93.2525, Y: 76.36},
+			{X: 93.11107864376268, Y: 76.30142135623731},
+		},
+		[]Point{
+			{X: 93.1110786437627, Y: 76.01857864376268},
+			{X: 93.8360786437627, Y: 75.29357864376269},
+			{X: 94.11892135623731, Y: 75.57642135623732},
+			{X: 93.3939213562373, Y: 76.30142135623731},
+		},
+		[]Point{
+			{X: 93.7775, Y: 75.435},
+			{X: 93.83607864376269, Y: 75.29357864376269},
+			{X: 93.9775, Y: 75.235},
+			{X: 94.11892135623732, Y: 75.29357864376269},
+			{X: 94.17750000000001, Y: 75.435},
+			{X: 94.11892135623732, Y: 75.57642135623732},
+			{X: 93.9775, Y: 75.635},
+			{X: 93.83607864376269, Y: 75.57642135623732},
+		},
+	}
+	s = nil
+	for i, ps := range pts {
+		var err error
+		s, err = s.Append(ps...)
+		if err != nil {
+			t.Fatalf("shape=%d failed import: %v", i, err)
+		}
+		s.Union()
+		if len(s.P) != 1 {
+			t.Fatalf("after shape=%d unioned, got=%d shapes, want=1: %v", i, len(s.P), s.P)
+		}
+	}
+	expect = []Point{
+		{X: 93.0525, Y: 76.16},
+		{X: 93.11107864376268, Y: 76.01857864376268},
+		{X: 93.8360786437627, Y: 75.29357864376269},
+		{X: 93.9775, Y: 75.235},
+		{X: 94.11892135623732, Y: 75.29357864376269},
+		{X: 94.17750000000001, Y: 75.435},
+		{X: 94.11892135623731, Y: 75.57642135623732},
+		{X: 93.39392135623731, Y: 76.30142135623731},
+		{X: 93.2525, Y: 76.36},
+		{X: 93.11107864376268, Y: 76.30142135623731},
 	}
 	us = s.P[0].PS
 	if len(us) != len(expect) {
