@@ -36,6 +36,14 @@ type Point struct {
 	X, Y float64
 }
 
+// AddX adds a to x*b.
+func (a Point) AddX(b Point, x float64) Point {
+	return Point{
+		X: a.X + b.X*x,
+		Y: a.Y + b.Y*x,
+	}
+}
+
 // BB determines the bounding box LL and TR corner points.
 func BB(a, b Point) (ll, tr Point) {
 	ll.X, tr.X = MinMax(a.X, b.X)
@@ -232,12 +240,121 @@ func (a Point) Dot(b Point) float64 {
 	return a.X*b.X + a.Y*b.Y
 }
 
+// Unit returns a unit vector in the direction of a towards b, or an
+// error if the points are too close.
+func (a Point) Unit(b Point) (u Point, err error) {
+	v := b.AddX(a, -1)
+	l2 := v.Dot(v)
+	if l2 < Zeroish {
+		err = fmt.Errorf("a=%v and b=%v too close", a, b)
+		return
+	}
+	isqrt := 1.0 / math.Sqrt(l2)
+	u = Point{X: v.X * isqrt, Y: v.Y * isqrt}
+	return
+}
+
 // moreClockwise confirms that c is more clockwise than d from b.
 func moreClockwise(b, c, d Point) bool {
-	bc := Point{c.X - b.X, c.Y - b.Y}
-	bd := Point{d.X - b.X, d.Y - b.Y}
+	bc := c.AddX(b, -1)
+	bd := d.AddX(b, -1)
 	crossBCBD := bc.X*bd.Y - bc.Y*bd.X
 	return crossBCBD >= 0
+}
+
+// Narrows computes the polygon corners where two (non-crossing) lines
+// (a->b) (c->d) fall within some threshold distance, delta.
+func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
+	hit = false
+	u1, err := a.Unit(b)
+	if err != nil {
+		return
+	}
+	u2, err := c.Unit(d)
+	if err != nil {
+		return
+	}
+	phi := u1.Dot(u2)
+	if phi > 0 {
+		return // more parallel than anti-parallel
+	}
+	delta2 := delta * delta
+	if phi*phi > 1-Zeroish {
+		// anti co-linear: calculate separation.
+		v := c.AddX(a, -1)
+		shift := v.Dot(u1)
+		v = v.AddX(u1, -shift)
+		v2 := v.Dot(v)
+		if v2 > delta2 {
+			return
+		}
+		// overlap extending on line.
+		excess := math.Sqrt(delta2 - v2)
+		// in u1 direction, compute a sortable offset
+		oa := a.Dot(u1)
+		ob := b.Dot(u1)
+		oc := c.Dot(u1)
+		od := d.Dot(u1)
+		if oa-excess > oc || ob+excess < od {
+			return
+		}
+		w = a
+		z = d
+		if od < oa {
+			if od+excess < oa {
+				z.X = a.X + v.X - excess*u1.X
+				z.Y = a.Y + v.Y - excess*u1.Y
+			}
+		} else {
+			if oa+excess < od {
+				w.X = d.X - v.X - excess*u1.X
+				w.Y = d.Y - v.Y - excess*u1.Y
+			}
+		}
+		x = b
+		y = c
+		if oc < ob {
+			if oc+excess < ob {
+				x.X = c.X - v.X + excess*u1.X
+				x.Y = c.Y - v.Y + excess*u1.Y
+			}
+		} else {
+			if ob+excess < oc {
+				x.X = b.X + v.X + excess*u1.X
+				x.Y = b.Y + v.Y + excess*u1.Y
+			}
+		}
+		hit = true
+		return
+	}
+	// non co-linear, converging on point, P.
+	ds := c.AddX(a, -1)
+	du := Point{
+		X: (u1.X - phi*u2.X) / (1 - phi*phi),
+		Y: (u1.Y - phi*u2.Y) / (1 - phi*phi),
+	}
+	alpha := ds.Dot(du)
+	p := a.AddX(u1, alpha)
+	r := delta / (2 * math.Cos(0.5*math.Acos(phi)))
+	// short of B?
+	bp := p.AddX(b, -1)
+	if bp.Dot(u1) > r {
+		return
+	}
+	pc := c.AddX(p, -1)
+	if pc.Dot(u2) > r {
+		return
+	}
+	w, x, y, z = a, b, c, d
+	if alpha > r {
+		w = p.AddX(u1, -r)
+	}
+	pd := d.AddX(p, -1)
+	if beta := pd.Dot(u2); beta > r {
+		z = p.AddX(u2, r)
+	}
+	hit = true
+	return
 }
 
 // intersect determines if two line segments (a->b) and (c->d)

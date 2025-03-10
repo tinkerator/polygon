@@ -1,6 +1,7 @@
 package polygon
 
 import (
+	"math"
 	"testing"
 )
 
@@ -775,5 +776,57 @@ func TestInflate(t *testing.T) {
 		if want := expect[i]; !MatchPoint(got, want) {
 			t.Errorf("inflated point[%d]: got=%v, want=%v", i, got, want)
 		}
+	}
+}
+
+func TestNarrows(t *testing.T) {
+	ts := [][]Point{
+		{
+			// not anti-parallel
+			{0, 0}, {10, 0}, {3, 1}, {7, 1},
+		},
+		{
+			{0, 0}, {10, 0}, {7, 1}, {3, 1},
+			{2, 0}, {8, 0}, {7, 1}, {3, 1},
+		},
+		{
+			{0, 0}, {0, 10}, {1, 7}, {1, 3},
+			{0, 2}, {0, 8}, {1, 7}, {1, 3},
+		},
+		{
+			{0, 0}, {0, 10}, {0, 10}, {4, 10},
+			{0, 9}, {0, 10}, {0, 10}, {1, 10},
+		},
+		{
+			{0, 0}, {10, 0}, {10, 0}, {10, 4},
+			{9, 0}, {10, 0}, {10, 0}, {10, 1},
+		},
+		{
+			{0, 0}, {0, 9.5}, {0.5, 10}, {4, 10},
+			{0, 9}, {0, 9.5}, {0.5, 10}, {1, 10},
+		},
+	}
+	same := func(a, b Point) bool {
+		if math.Abs(a.X-b.X) > Zeroish {
+			return false
+		}
+		if math.Abs(a.Y-b.Y) > Zeroish {
+			return false
+		}
+		return true
+	}
+	rt := math.Sqrt(2)
+	for i, v := range ts {
+		hit, a, b, c, d := Narrows(v[0], v[1], v[2], v[3], rt)
+		want := len(v) == 8
+		if hit == want {
+			if !want {
+				continue
+			}
+		}
+		if same(a, v[4]) && same(b, v[5]) && same(c, v[6]) && same(d, v[7]) {
+			continue
+		}
+		t.Errorf("%d got %v [%v %v %v %v] want %v %v", i, hit, a, b, c, d, want, v[4:])
 	}
 }
