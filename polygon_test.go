@@ -830,3 +830,24 @@ func TestNarrows(t *testing.T) {
 		t.Errorf("%d got %v [%v %v %v %v] want %v %v", i, hit, a, b, c, d, want, v[4:])
 	}
 }
+
+func TestSlice(t *testing.T) {
+	var s *Shapes
+	s = s.Builder([]Point{{1, 1}, {2, 1}, {2, 2}, {1, 2}}...)
+	lines, err := s.Slice(0, 0.2)
+	if err != nil {
+		t.Fatalf("failed to slice: %v", err)
+	}
+	if len(lines) != 9 {
+		t.Fatalf("got %d lines, wanted %d", len(lines), 9)
+	}
+	s = nil
+	s = s.Builder([]Point{{1, 1}, {1.4, 1}, {1.4, 1.4}, {1.6, 1.4}, {1.6, 1}, {2, 1}, {2, 2}, {1, 2}}...)
+	lines, err = s.Slice(0, 0.2)
+	if err != nil {
+		t.Fatalf("failed to slice: %v", err)
+	}
+	if len(lines) != 13 {
+		t.Fatalf("got %d lines, wanted %d", len(lines), 13)
+	}
+}

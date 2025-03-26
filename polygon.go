@@ -36,6 +36,11 @@ type Point struct {
 	X, Y float64
 }
 
+// Line holds a 2d line between 2 Points.
+type Line struct {
+	From, To Point
+}
+
 // AddX adds a to x*b.
 func (a Point) AddX(b Point, x float64) Point {
 	return Point{
@@ -743,4 +748,67 @@ func (s *Shapes) Inflate(n int, d float64) error {
 		last = pre
 	}
 	return nil
+}
+
+// Slice returns an array of horizontal (dy=0) lines to render the
+// filled polygon. This can be used to rasterize a shape in some
+// output format. The radial width of a rendered line is d. The lines
+// are drawn from d/2 inside the shape to allow for this imprecision.
+func (s *Shapes) Slice(i int, d float64) (lines []Line, err error) {
+	if s == nil || i < 0 || i >= len(s.P) {
+		err = fmt.Errorf("invalid index %d for shapes", i)
+		return
+	}
+	// Walk from least Y+d/2, to largest Y-d/2.
+	p := s.P[i]
+	if p.Hole {
+		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
+		return
+	}
+	half := d / 2
+	bottom, top := p.MinY+half, p.MaxY-half/2
+	if top < bottom {
+		bottom = (top + bottom) / 2
+	}
+	// X range guaranteed to extend outside of polygon.
+	left, right := p.MinX-half, p.MaxX+half
+	for level := bottom; level <= top; level += half {
+		a := Point{X: left, Y: level}
+		b := Point{X: right, Y: level}
+		var ats []float64
+		for j := 0; j < len(p.PS); j++ {
+			var to Point
+			if j == len(p.PS)-1 {
+				to = p.PS[0]
+			} else {
+				to = p.PS[j+1]
+			}
+			from := p.PS[j]
+			if math.Abs(from.Y-to.Y) < Zeroish && math.Abs(a.Y-from.Y) < Zeroish {
+				ats = append(ats, from.X, to.X)
+				continue
+			}
+			hit, _, _, e := intersect(a, b, from, to)
+			if !hit {
+				continue
+			}
+			ats = append(ats, e.X)
+		}
+		if len(ats) == 0 {
+			continue
+		}
+		if len(ats)&1 == 1 {
+			err = fmt.Errorf("shape %d has odd crossings at %f", i, level)
+			return
+		}
+		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
+		for j := 0; j < len(ats); j += 2 {
+			line := Line{
+				From: Point{X: ats[j] + half, Y: level},
+				To:   Point{X: ats[j+1] - half, Y: level},
+			}
+			lines = append(lines, line)
+		}
+	}
+	return
 }
