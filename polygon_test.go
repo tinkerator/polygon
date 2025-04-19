@@ -14,7 +14,7 @@ func TestIsLeft(t *testing.T) {
 		{Point{.1, 0}, Point{0, 0}, Point{0, 1}, false},
 	}
 	for i, v := range vs {
-		got := isLeft(v.a, v.b, v.c)
+		got := v.a.isLeft(v.b, v.c)
 		if got != v.want {
 			t.Fatalf("test=%d error see %v is left=%v of %v->%v", i, v.a, v.want, v.b, v.c)
 		}

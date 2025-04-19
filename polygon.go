@@ -249,7 +249,7 @@ func moreClockwise(b, c, d Point) bool {
 // isLeft determines if point a is left of the line segment (b->c). By
 // "to the left of" we mean looking along the line (b->c) towards c,
 // do we see a on the left of this line?
-func isLeft(a, b, c Point) bool {
+func (a Point) isLeft(b, c Point) bool {
 	return moreClockwise(b, c, a)
 }
 
@@ -358,8 +358,8 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	dCDX, dCDY := (d.X - c.X), (d.Y - c.Y)
 	bbAB0, bbAB1 := BB(a, b)
 	bbCD0, bbCD1 := BB(c, d)
-	left = isLeft(a, c, d)
-	hold = isLeft(c, a, b)
+	left = a.isLeft(c, d)
+	hold = c.isLeft(a, b)
 	// Do line bounding boxes not come close to overlapping each other?
 	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
 		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
@@ -458,6 +458,30 @@ func (s *Shape) dissolve() (dissolved bool) {
 	return
 }
 
+// Inside confirms that a pt is fully inside some polygon.
+func (pt *Point) Inside(p *Shape) bool {
+	if pt.X < p.MinX || pt.X > p.MaxX || pt.Y < p.MinY || pt.Y > p.MaxY {
+		return false
+	}
+	prev := p.PS[len(p.PS)-1]
+	above := false
+	for _, next := range p.PS {
+		if pt.X <= prev.X && pt.X >= next.X {
+			// prev -> next is right to left
+			if pt.isLeft(prev, next) {
+				above = !above
+			}
+		} else if pt.X >= prev.X && pt.X <= next.X {
+			// prev -> next is left to right
+			if pt.isLeft(next, prev) {
+				above = !above
+			}
+		}
+		prev = next
+	}
+	return above
+}
+
 // combine computes the union of two Polygon shapes, indexed in p as n
 // and m. This is either a no-op, or will generate one polygon and
 // zero or more holes. The return value, banked, indicates how many
@@ -474,16 +498,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	// polygon at a time. Record each overlapping point with a
 	// lookup table entry.
 	hits := make(map[Point]bool)
-	// these are only valid if there are no intersection hits
-	// inner == n inside m
-	// outer == m inside n
-	var inner, outer bool
 	for i := 0; i < len(p1.PS); i++ {
-		if i == 0 {
-			// start over
-			inner = true
-			outer = true
-		}
 		a := p1.PS[i]
 		b := p1.PS[(i+1)%len(p1.PS)]
 		if MatchPoint(a, b) {
@@ -521,9 +536,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				j--
 				continue
 			}
-			hit, aLeftCD, cLeftAB, e := intersect(a, b, c, d)
-			inner = inner && aLeftCD
-			outer = outer && cLeftAB
+			hit, _, _, e := intersect(a, b, c, d)
 			if hit {
 				hits[e] = true
 				if !MatchPoint(e, c, d) {
@@ -541,20 +554,16 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		}
 	}
 	if len(hits) == 0 {
-		if !inner && !outer {
-			// no overlap
-			banked = m + 1
-			return
-		}
 		if p1.Hole != p2.Hole {
 			banked = m + 1
 			return
 		}
-		if inner {
-			log.Printf("TODO not sure this is reachable CHECK n=%d should be swallowed by m=%d %v %v", n, m, p1, p2)
+		// No intersections, but one polygon might consume other.
+		if p1.PS[0].Inside(p2) {
 			p.P = append(p.P[:n], p.P[n+1:]...)
 			banked = n + 1
-		} else if outer {
+			return
+		} else if p2.PS[0].Inside(p1) {
 			p.P = append(p.P[:m], p.P[m+1:]...)
 			banked = m
 		}
