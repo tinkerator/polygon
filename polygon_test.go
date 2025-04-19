@@ -5,6 +5,22 @@ import (
 	"testing"
 )
 
+func TestIsLeft(t *testing.T) {
+	vs := []struct {
+		a, b, c Point
+		want    bool
+	}{
+		{Point{0, .1}, Point{0, 0}, Point{1, 0}, true},
+		{Point{.1, 0}, Point{0, 0}, Point{0, 1}, false},
+	}
+	for i, v := range vs {
+		got := isLeft(v.a, v.b, v.c)
+		if got != v.want {
+			t.Fatalf("test=%d error see %v is left=%v of %v->%v", i, v.a, v.want, v.b, v.c)
+		}
+	}
+}
+
 func TestMinMax(t *testing.T) {
 	vs := []struct{ x, y, a, b float64 }{
 		{x: 1, y: 2, a: 1, b: 2},
@@ -194,6 +210,7 @@ func TestUnion(t *testing.T) {
 		}
 	}
 
+	// First poly fully contained in second.
 	ss = nil
 	ss = ss.Builder([]Point{
 		{X: 1, Y: 1},
@@ -336,6 +353,41 @@ func TestUnion(t *testing.T) {
 			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
 		}
 	}
+
+	ss = nil
+	ss = ss.Builder([]Point{
+		{93.6, 72.6},
+		{93.7, 72.7},
+		{92.2, 73.7},
+	}...).Builder([]Point{
+		{93.0, 73.7},
+		{93.0, 73.4},
+		{93.6, 74.3},
+	}...)
+	ss.Union()
+	if len(ss.P) != 2 {
+		t.Fatalf("expecting two polys, but got %d", len(ss.P))
+	}
+	us = ss.P[0].PS
+	expect = []Point{{92.2, 73.7}, {93.6, 72.6}, {93.7, 72.7}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union[0] points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+	us = ss.P[1].PS
+	expect = []Point{{93.0, 73.4}, {93.6, 74.3}, {93.0, 73.7}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union[1] points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[1] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
 }
 
 func TestIntersect(t *testing.T) {
@@ -344,11 +396,32 @@ func TestIntersect(t *testing.T) {
 		hit, left, hold bool
 	}{
 		{
+			a:    Point{X: 0.0, Y: 0.0},
+			b:    Point{X: 1.0, Y: 0.0},
+			c:    Point{X: 0.1, Y: 0.1},
+			d:    Point{X: 0.1, Y: 1.0},
+			hit:  false,
+			left: true,
+			hold: true,
+			at:   Point{X: 92.062470, Y: 72.33},
+		},
+		{
+			a:    Point{X: 0.1, Y: 0.1},
+			b:    Point{X: 0.1, Y: 1.0},
+			c:    Point{X: 1.0, Y: 0.0},
+			d:    Point{X: 0.0, Y: 0.0},
+			hit:  false,
+			left: false,
+			hold: false,
+			at:   Point{X: 92.062470, Y: 72.33},
+		},
+		{
 			a:    Point{X: 96.38225424859374, Y: 74.72694631307311},
 			b:    Point{X: 96.35022032262698, Y: 74.75022032262696},
 			c:    Point{X: 96.35022032262697, Y: 74.75022032262696},
 			d:    Point{X: 96.25725424859374, Y: 74.81776412907378},
 			hit:  true,
+			left: true,
 			hold: true,
 			at:   Point{X: 96.35022032262697, Y: 74.75022032262696},
 		},
@@ -359,22 +432,23 @@ func TestIntersect(t *testing.T) {
 			d:    Point{X: 96.1048, Y: 72.33},
 			hit:  true,
 			hold: true,
+			left: false,
 			at:   Point{X: 92.062470, Y: 72.33},
 		},
 	}
 	for i, v := range vs {
 		hit, left, hold, at := intersect(v.a, v.b, v.c, v.d)
+		if hold != v.hold {
+			t.Errorf("test=%d: hold got=%v, want=%v", i, hold, v.hold)
+		}
+		if left != v.left {
+			t.Errorf("test=%d: left got=%v, want=%v", i, left, v.left)
+		}
 		if hit != v.hit {
 			t.Fatalf("test=%d: hit got=%v, want=%v", i, hit, v.hit)
 		}
 		if !hit {
 			continue
-		}
-		if hold != v.hold {
-			t.Errorf("TODO test=%d: hold got=%v, want=%v", i, hold, v.hold)
-		}
-		if left != v.left {
-			t.Errorf("test=%d: left got=%v, want=%v", i, left, v.left)
 		}
 		if !MatchPoint(v.at, at) {
 			t.Errorf("test=%d got=%v, want=%v", i, at, v.at)

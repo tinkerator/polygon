@@ -72,27 +72,6 @@ func max(a, b float64) float64 {
 	return b
 }
 
-// isLeft determines if point a is left of the line segment (b->c).
-func isLeft(a, b, c Point) bool {
-	if ((a.Y < b.Y-Zeroish/2) && (a.Y < c.Y-Zeroish)) || ((a.Y > b.Y+Zeroish/2) && (a.Y > c.Y+Zeroish/2)) {
-		return false // a is fully above or below (b->c)
-	}
-	if min(b.X, c.X) > a.X {
-		return true
-	}
-	if max(b.X, c.X) < a.X {
-		return false
-	}
-	// a is horizontally within Y range of BC.
-	// compare a.X to the x value of line BC at y = a.Y.
-	mBC := (b.Y - c.Y) / (b.X - c.X)
-	cBC := b.Y - mBC*b.X
-	if x := (a.Y - cBC) / mBC; a.X <= x {
-		return true
-	}
-	return false
-}
-
 // Shape holds the points in a polygon and some convenience fields,
 // such as the properties of its bounding box and whether the
 // perimeter is clockwise (by convention a Hole) or counterclockwise
@@ -267,6 +246,13 @@ func moreClockwise(b, c, d Point) bool {
 	return crossBCBD >= 0
 }
 
+// isLeft determines if point a is left of the line segment (b->c). By
+// "to the left of" we mean looking along the line (b->c) towards c,
+// do we see a on the left of this line?
+func isLeft(a, b, c Point) bool {
+	return moreClockwise(b, c, a)
+}
+
 // Narrows computes the polygon corners where two (non-crossing) lines
 // (a->b) (c->d) fall within some threshold distance, delta.
 func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
@@ -364,9 +350,9 @@ func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
 
 // intersect determines if two line segments (a->b) and (c->d)
 // intersect (hit) and returns the point that they intersect. It also
-// determines if the point a is to the left of the line (c->d).  The
-// point c is evaluated for its leftness to (a->b) and this value is
-// returned as hold.
+// determines if the point a is to the 'left' of the line (c->d). See
+// isLeft() for calculation. The point c is evaluated for its leftness
+// to (a->b) and this value is returned as hold.
 func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	dABX, dABY := (b.X - a.X), (b.Y - a.Y)
 	dCDX, dCDY := (d.X - c.X), (d.Y - c.Y)
@@ -495,8 +481,8 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	for i := 0; i < len(p1.PS); i++ {
 		if i == 0 {
 			// start over
-			inner = false
-			outer = false
+			inner = true
+			outer = true
 		}
 		a := p1.PS[i]
 		b := p1.PS[(i+1)%len(p1.PS)]
@@ -535,7 +521,9 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				j--
 				continue
 			}
-			hit, aLeftBC, cLeftAB, e := intersect(a, b, c, d)
+			hit, aLeftCD, cLeftAB, e := intersect(a, b, c, d)
+			inner = inner && aLeftCD
+			outer = outer && cLeftAB
 			if hit {
 				hits[e] = true
 				if !MatchPoint(e, c, d) {
@@ -548,13 +536,6 @@ func (p *Shapes) combine(n, m int) (banked int) {
 					tmp := append([]Point{e}, p1.PS[i+1:]...)
 					p1.PS = append(p1.PS[:i+1], tmp...)
 					b = e
-				}
-			} else {
-				if i == 0 && aLeftBC {
-					inner = !inner
-				}
-				if j == 0 && cLeftAB {
-					outer = !outer
 				}
 			}
 		}
