@@ -480,7 +480,7 @@ func (s *Shape) dissolve() (dissolved bool) {
 func (p *Shapes) combine(n, m int) (banked int) {
 	banked = m + 1
 	p1, p2 := p.P[n], p.P[m]
-	if p1.MinX > p2.MaxX || p1.MaxX < p1.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
+	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 		// Bounding boxes do not overlap.
 		return
 	}
