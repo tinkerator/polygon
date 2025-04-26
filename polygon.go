@@ -102,12 +102,12 @@ type Shapes struct {
 
 // Return the bounding box lower left and top right corner points for
 // the shapes.
-func (s *Shapes) BB() (ll, tr Point) {
-	for i, p := range s.P {
+func (p *Shapes) BB() (ll, tr Point) {
+	for i, s := range p.P {
 		if i == 0 {
-			ll, tr = p.BB()
+			ll, tr = s.BB()
 		} else {
-			ll2, tr2 := p.BB()
+			ll2, tr2 := s.BB()
 			ll, _ = BB(ll, ll2)
 			_, tr = BB(tr, tr2)
 		}
@@ -115,18 +115,12 @@ func (s *Shapes) BB() (ll, tr Point) {
 	return
 }
 
-// Append appends a polygon shape constructed from a series of
-// consecutive points. If p is nil, it is allocated. The return value
-// is the appended collection of shapes. The newly added polygon is
-// the last one, and it's zeroth point is guaranteed to be leftmost
-// and lowest.
-func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
+// Rationalize builds a properly constructed shape.
+func Rationalize(pts []Point) (*Shape, error) {
 	if len(pts) < 3 {
-		return p, fmt.Errorf("polygon requires 3 or more points: got=%d", len(pts))
+		return nil, fmt.Errorf("polygon requires 3 or more points: got=%d", len(pts))
 	}
-	if p == nil {
-		p = &Shapes{}
-	}
+
 	var minX, minY, maxX, maxY float64
 	var ps []Point
 	var zPt int
@@ -153,13 +147,28 @@ func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
 	d1X, d1Y := ps[0].X-ps[len(ps)-1].X, ps[0].Y-ps[len(ps)-1].Y
 	d2X, d2Y := ps[1].X-ps[0].X, ps[1].Y-ps[0].Y
 	hole := (d1X*d2Y - d1Y*d2X) < 0
-	poly := &Shape{
+	return &Shape{
 		MinX: minX,
 		MinY: minY,
 		MaxX: maxX,
 		MaxY: maxY,
 		Hole: hole,
 		PS:   ps,
+	}, nil
+}
+
+// Append appends a polygon shape constructed from a series of
+// consecutive points. If p is nil, it is allocated. The return value
+// is the appended collection of shapes. The newly added polygon is
+// the last one, and it's zeroth point is guaranteed to be leftmost
+// and lowest.
+func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
+	poly, err := Rationalize(pts)
+	if err != nil {
+		return p, err
+	}
+	if p == nil {
+		return &Shapes{[]*Shape{poly}}, nil
 	}
 	p.P = append(p.P, poly)
 	return p, nil
@@ -435,25 +444,45 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 }
 
 // dissolve eliminates collinear points from a polygon.
-func (s *Shape) dissolve() (dissolved bool) {
+func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
 	if s == nil {
 		return
 	}
-	for i := 0; i < len(s.PS); {
-		a := s.PS[i]
-		bI := (i + 1) % len(s.PS)
-		b := s.PS[bI] // evaluate whether to delete this
-		c := s.PS[(i+2)%len(s.PS)]
-		ac := Point{c.X - a.X, c.Y - a.Y}
-		ab := Point{b.X - a.X, b.Y - a.Y}
-		dot := ac.Dot(ab)
-		cmp := ac.Dot(ac) * ab.Dot(ab)
-		if math.Abs(dot*dot-cmp) < Zeroish {
-			s.PS = append(s.PS[:bI], s.PS[bI+1:]...)
+	pts := s.PS
+	for i := 0; i < len(pts); {
+		a := pts[i]
+		bI := (i + 1) % len(pts)
+		b := pts[bI] // evaluate whether to delete this
+		if MatchPoint(a, b) {
+			pts = append(pts[:bI], pts[bI+1:]...)
+			dissolved = true
+			continue
+		}
+		u, err := a.Unit(b)
+		if err != nil {
+			log.Fatalf(fmt.Sprintf("should not reach here: %v", err))
+		}
+		c := pts[(i+2)%len(pts)]
+		if MatchPoint(b, c) {
+			pts = append(pts[:bI], pts[bI+1:]...)
+			dissolved = true
+			continue
+		}
+		v, err := a.Unit(c)
+		if err != nil {
+			log.Fatalf(fmt.Sprintf("invalid point c: %v", err))
+		}
+		if math.Abs(u.Dot(v)-1) < Zeroish {
+			pts = append(pts[:bI], pts[bI+1:]...)
 			dissolved = true
 		} else {
 			i++
 		}
+	}
+	var err error
+	poly, err = Rationalize(pts)
+	if err != nil {
+		log.Fatalf("failed to rationalize: %v", err)
 	}
 	return
 }
@@ -538,6 +567,23 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			}
 			hit, _, _, e := intersect(a, b, c, d)
 			if hit {
+				// Prefer canonical points vs derived ones.
+				// Above we've confirmed that a != b.
+				if MatchPoint(e, a) && e != a {
+					e = a
+				} else if MatchPoint(e, b) && e != b {
+					e = b
+				}
+				// For this polygon we nudge the
+				// points themselves. This is needed to
+				// make use of the hits map later.
+				if MatchPoint(e, c) && e != c {
+					c = e
+					p2.PS[j] = e
+				} else if MatchPoint(e, d) && e != d {
+					d = e
+					p2.PS[(j+1)%len(p2.PS)] = e
+				}
 				hits[e] = true
 				if !MatchPoint(e, c, d) {
 					tmp := append([]Point{e}, p2.PS[j+1:]...)
@@ -569,18 +615,9 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		}
 		return
 	}
-	// Need to start from a point that is guaranteed to be on the
-	// perimeter. Append() rotates the built shape to guarantee
-	// that the 0th point is on the outer hull of the shape
-	// (leftmost or lowest left).
-	union := &Shape{
-		MinX: min(p1.MinX, p2.MinX),
-		MinY: min(p1.MinY, p2.MinY),
-		MaxX: max(p1.MaxX, p2.MaxX),
-		MaxY: max(p1.MaxY, p2.MaxY),
-	}
+
 	src1, src2 := p1.PS, p2.PS
-	var extra1, extra2 []Point
+	var pts, extra1, extra2 []Point
 	var offset1, offset2 int
 
 	// Initially, we step around p2 until we find the intersection
@@ -601,9 +638,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				}
 				continue
 			}
-			if !lockedOn {
-				lockedOn = true
-			}
+			lockedOn = true
 			ptKeep := src1[(offset1+i+1)%len(src1)]
 			ptSwap := src2[(offset2+j+1)%len(src2)]
 			if moreClockwise(pt1, ptSwap, ptKeep) {
@@ -615,9 +650,15 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			}
 		}
 		i++
-		union.PS = append(union.PS, pt1)
+		pts = append(pts, pt1)
 	}
-	if was := len(union.PS); union.dissolve() && was < len(union.PS) {
+	union, err := Rationalize(pts)
+	if err != nil {
+		log.Fatalf("union polygon failed to rationailze: %v", err)
+	}
+	was := len(union.PS)
+	union, dissolved := union.dissolve()
+	if dissolved && was < len(union.PS) {
 		log.Printf("dissolved negative points was=%d, is=%d", was, len(union.PS))
 	}
 	rest := p.P[m+1:]
@@ -702,7 +743,7 @@ func (p *Shapes) Union() {
 }
 
 // Inflate inflates an indexed shape by distance, d. Holes are
-// deflated by this amount. If we inflate a circle by d, its diameter
+// deflated by this amount. If we inflate a circle by d, its radius
 // will increase by that much.
 func (s *Shapes) Inflate(n int, d float64) error {
 	if n < 0 || n >= len(s.P) {
@@ -715,6 +756,7 @@ func (s *Shapes) Inflate(n int, d float64) error {
 	first := p.PS[0]
 	last := p.PS[len(p.PS)-1]
 	d *= 0.5 // Since we add an offset twice per point.
+	var pts []Point
 	for i, this := range p.PS {
 		pre := this
 		next := first
@@ -734,9 +776,14 @@ func (s *Shapes) Inflate(n int, d float64) error {
 		this.X += dY
 		this.Y -= dX
 
-		p.PS[i] = this
+		pts = append(pts, this)
 		last = pre
 	}
+	poly, err := Rationalize(pts)
+	if err != nil {
+		return err
+	}
+	s.P[n] = poly
 	return nil
 }
 
