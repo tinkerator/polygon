@@ -453,31 +453,24 @@ func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
 		a := pts[i]
 		bI := (i + 1) % len(pts)
 		b := pts[bI] // evaluate whether to delete this
+		bad := false
 		if MatchPoint(a, b) {
-			pts = append(pts[:bI], pts[bI+1:]...)
-			dissolved = true
-			continue
+			bad = true
+		} else if u, err := a.Unit(b); err != nil {
+			bad = true
+		} else if c := pts[(i+2)%len(pts)]; MatchPoint(b, c) {
+			bad = true
+		} else if v, err := a.Unit(c); err != nil {
+			bad = true
+		} else if math.Abs(u.Dot(v)-1) < Zeroish {
+			bad = true
 		}
-		u, err := a.Unit(b)
-		if err != nil {
-			log.Fatalf(fmt.Sprintf("should not reach here: %v", err))
-		}
-		c := pts[(i+2)%len(pts)]
-		if MatchPoint(b, c) {
-			pts = append(pts[:bI], pts[bI+1:]...)
-			dissolved = true
-			continue
-		}
-		v, err := a.Unit(c)
-		if err != nil {
-			log.Fatalf(fmt.Sprintf("invalid point c: %v", err))
-		}
-		if math.Abs(u.Dot(v)-1) < Zeroish {
-			pts = append(pts[:bI], pts[bI+1:]...)
-			dissolved = true
-		} else {
+		if !bad {
 			i++
+			continue
 		}
+		pts = append(pts[:bI], pts[bI+1:]...)
+		dissolved = true
 	}
 	var err error
 	poly, err = Rationalize(pts)
