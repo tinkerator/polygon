@@ -474,7 +474,7 @@ func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
 }
 
 // Inside confirms that a pt is fully inside some polygon.
-func (pt *Point) Inside(p *Shape) bool {
+func (pt Point) Inside(p *Shape) bool {
 	if pt.X < p.MinX || pt.X > p.MaxX || pt.Y < p.MinY || pt.Y > p.MaxY {
 		return false
 	}
