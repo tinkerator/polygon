@@ -372,7 +372,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	// Do line bounding boxes not come close to overlapping each other?
 	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
 		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
-		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD0.Y) > Zeroish) ||
+		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD1.Y) > Zeroish) ||
 		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
 		return
 	}
@@ -411,35 +411,28 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		} else if MatchPoint(b, at) {
 			at = b
 		}
-	} else if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
-		return // parallel but not co-linear.
-	} else {
-		if a == c {
-			// ignore situation where the two lines start from the same place.
-			return
-		}
-		if hit = MatchPoint(a, d); hit {
-			at = a
-			return
-		}
-		if hit = MatchPoint(b, d); hit {
-			at = b
-			return
-		}
-		if hit = MatchPoint(b, c); hit {
-			at = b
-			return
-		}
-		if dot := (b.X-a.X)*(d.X-c.X) + (b.Y-a.Y)*(d.Y-c.Y); dot > 0 {
-			at = b
-			hit = true
-		} else {
-			at = c
-			hit = true
-		}
+		hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
 		return
 	}
-	hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
+	if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
+		return // parallel but not co-linear.
+	}
+	if a == c {
+		// ignore situation where the two lines start from the same place.
+		return
+	}
+	if hit = MatchPoint(a, d); hit {
+		at = a
+		return
+	}
+	if hit = MatchPoint(b, d); hit {
+		at = b
+		return
+	}
+	if hit = MatchPoint(b, c); hit {
+		at = b
+		return
+	}
 	return
 }
 
@@ -784,7 +777,10 @@ func (s *Shapes) Inflate(n int, d float64) error {
 // filled polygon. This can be used to rasterize a shape in some
 // output format. The radial width of a rendered line is d. The lines
 // are drawn from d/2 inside the shape to allow for this imprecision.
-func (s *Shapes) Slice(i int, d float64) (lines []Line, err error) {
+// If s is known to contain holes, and the indices of the holes are
+// provided, then the corresponding polygon holes are used to further
+// shorten the returned lines.
+func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error) {
 	if s == nil || i < 0 || i >= len(s.P) {
 		err = fmt.Errorf("invalid index %d for shapes", i)
 		return
@@ -796,28 +792,19 @@ func (s *Shapes) Slice(i int, d float64) (lines []Line, err error) {
 		return
 	}
 	half := d / 2
-	bottom, top := p.MinY+half, p.MaxY-half/2
+	bottom, top := p.MinY, p.MaxY
 	if top < bottom {
 		bottom = (top + bottom) / 2
 	}
 	// X range guaranteed to extend outside of polygon.
 	left, right := p.MinX-half, p.MaxX+half
-	for level := bottom; level <= top; level += half {
+	for level := bottom + half; level < top; level += half {
 		a := Point{X: left, Y: level}
 		b := Point{X: right, Y: level}
 		var ats []float64
 		for j := 0; j < len(p.PS); j++ {
-			var to Point
-			if j == len(p.PS)-1 {
-				to = p.PS[0]
-			} else {
-				to = p.PS[j+1]
-			}
 			from := p.PS[j]
-			if math.Abs(from.Y-to.Y) < Zeroish && math.Abs(a.Y-from.Y) < Zeroish {
-				ats = append(ats, from.X, to.X)
-				continue
-			}
+			to := p.PS[(j+1)%len(p.PS)]
 			hit, _, _, e := intersect(a, b, from, to)
 			if !hit {
 				continue
@@ -837,7 +824,46 @@ func (s *Shapes) Slice(i int, d float64) (lines []Line, err error) {
 				From: Point{X: ats[j] + half, Y: level},
 				To:   Point{X: ats[j+1] - half, Y: level},
 			}
-			lines = append(lines, line)
+			if line.From.X > line.To.X {
+				continue // too short to render
+			}
+			// cut line if it overlaps a hole. Because the
+			// holes do not intersect the the perimeter of
+			// any non-hold polygon, the lines are either
+			// broken by a hole into two, or do not
+			// overlap at all.
+			var hits []float64
+			for _, hi := range holeI {
+				hole := s.P[hi]
+				if hole.MaxX < level || hole.MinX > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
+					continue
+				}
+				for k := 0; k < len(hole.PS); k++ {
+					a := hole.PS[k]
+					b := hole.PS[(k+1)%len(hole.PS)]
+					hit, _, _, e := intersect(line.From, line.To, a, b)
+					if hit {
+						hits = append(hits, e.X)
+					}
+				}
+			}
+			if len(hits) == 0 {
+				lines = append(lines, line)
+				continue
+			}
+			sort.Slice(hits, func(i, j int) bool { return hits[i] < hits[j] })
+			hits = append(append([]float64{line.From.X - half}, hits...), line.To.X+half)
+			for hi := 0; hi < len(hits); hi += 2 {
+				from := hits[hi] + half
+				to := hits[hi] - half
+				if from+half > to-half {
+					continue
+				}
+				lines = append(lines, Line{
+					From: Point{X: from, Y: level},
+					To:   Point{X: to, Y: level},
+				})
+			}
 		}
 	}
 	return

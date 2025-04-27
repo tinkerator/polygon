@@ -1037,7 +1037,7 @@ func TestSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to slice: %v", err)
 	}
-	if len(lines) != 13 {
+	if len(lines) != 12 {
 		t.Fatalf("got %d lines, wanted %d", len(lines), 13)
 	}
 }
