@@ -77,6 +77,10 @@ func max(a, b float64) float64 {
 // perimeter is clockwise (by convention a Hole) or counterclockwise
 // (by convention a shape).
 type Shape struct {
+	// Index is a string assigned when the shape is defined. It
+	// can be really useful when trying to debug why polygons have
+	// been merged.
+	Index string
 	// MinX etc represent the bounding box for a polygon.
 	MinX, MinY, MaxX, MaxY float64
 	// Hole indicates the polygon points are ordered (clockwise)
@@ -97,6 +101,10 @@ func (s *Shape) BB() (ll, tr Point) {
 // Shapes holds a set of polygon shapes each of arrays of (x,y)
 // points.
 type Shapes struct {
+	// index is used to assign unique Index values to Shape
+	// members of P.
+	index int
+	// P holds the polygon Shape data.
 	P []*Shape
 }
 
@@ -168,8 +176,13 @@ func (p *Shapes) Append(pts ...Point) (*Shapes, error) {
 		return p, err
 	}
 	if p == nil {
-		return &Shapes{[]*Shape{poly}}, nil
+		poly.Index = "0"
+		return &Shapes{
+			P: []*Shape{poly},
+		}, nil
 	}
+	p.index++
+	poly.Index = fmt.Sprint(p.index)
 	p.P = append(p.P, poly)
 	return p, nil
 }
@@ -478,23 +491,21 @@ func (pt Point) Inside(p *Shape) bool {
 	if pt.X < p.MinX || pt.X > p.MaxX || pt.Y < p.MinY || pt.Y > p.MaxY {
 		return false
 	}
+	// Point is inside the bounding box for p.  Consider how many
+	// times the line (pt->to) intersects with a line from p.
+	// odd = inside, even = outside.
+	to := pt
+	to.X = p.MaxX + 1
+	inside := false
 	prev := p.PS[len(p.PS)-1]
-	above := false
 	for _, next := range p.PS {
-		if pt.X <= prev.X && pt.X >= next.X {
-			// prev -> next is right to left
-			if pt.isLeft(prev, next) {
-				above = !above
-			}
-		} else if pt.X >= prev.X && pt.X <= next.X {
-			// prev -> next is left to right
-			if pt.isLeft(next, prev) {
-				above = !above
-			}
+		hit, _, _, _ := intersect(pt, to, prev, next)
+		if hit {
+			inside = !inside
 		}
 		prev = next
 	}
-	return above
+	return inside
 }
 
 // combine computes the union of two Polygon shapes, indexed in p as n
@@ -592,12 +603,16 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		}
 		// No intersections, but one polygon might consume other.
 		if p1.PS[0].Inside(p2) {
+			p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
 			p.P = append(p.P[:n], p.P[n+1:]...)
 			banked = n + 1
 			return
-		} else if p2.PS[0].Inside(p1) {
+		}
+		if p2.PS[0].Inside(p1) {
+			p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
 			p.P = append(p.P[:m], p.P[m+1:]...)
 			banked = m
+			return
 		}
 		return
 	}
@@ -647,6 +662,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	if dissolved && was < len(union.PS) {
 		log.Printf("dissolved negative points was=%d, is=%d", was, len(union.PS))
 	}
+	union.Index = fmt.Sprint("(", p1.Index, "+", p2.Index, ")")
 	rest := p.P[m+1:]
 	keep := append([]*Shape{}, p.P[n+1:m]...)
 	var poly *Shapes
@@ -769,6 +785,7 @@ func (s *Shapes) Inflate(n int, d float64) error {
 	if err != nil {
 		return err
 	}
+	poly.Index = p.Index
 	s.P[n] = poly
 	return nil
 }
