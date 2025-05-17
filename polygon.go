@@ -486,20 +486,20 @@ func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
 	return
 }
 
-// Inside confirms that a pt is fully inside some polygon.
-func (pt Point) Inside(p *Shape) bool {
-	if pt.X < p.MinX || pt.X > p.MaxX || pt.Y < p.MinY || pt.Y > p.MaxY {
+// Inside confirms that a is fully inside some polygon.
+func (a Point) Inside(p *Shape) bool {
+	if a.X < p.MinX || a.X > p.MaxX || a.Y < p.MinY || a.Y > p.MaxY {
 		return false
 	}
 	// Point is inside the bounding box for p.  Consider how many
-	// times the line (pt->to) intersects with a line from p.
+	// times the line (a->to) intersects with a line from p.
 	// odd = inside, even = outside.
-	to := pt
+	to := a
 	to.X = p.MaxX + 1
 	inside := false
 	prev := p.PS[len(p.PS)-1]
 	for _, next := range p.PS {
-		hit, _, _, _ := intersect(pt, to, prev, next)
+		hit, _, _, _ := intersect(a, to, prev, next)
 		if hit {
 			inside = !inside
 		}
@@ -747,23 +747,23 @@ func (p *Shapes) Union() {
 // Inflate inflates an indexed shape by distance, d. Holes are
 // deflated by this amount. If we inflate a circle by d, its radius
 // will increase by that much.
-func (s *Shapes) Inflate(n int, d float64) error {
-	if n < 0 || n >= len(s.P) {
-		return fmt.Errorf("invalid polygon=%d in shapes (%d known)", n, len(s.P))
+func (p *Shapes) Inflate(n int, d float64) error {
+	if n < 0 || n >= len(p.P) {
+		return fmt.Errorf("invalid polygon=%d in shapes (%d known)", n, len(p.P))
 	}
 	if d == 0 {
 		return nil // nothing needed
 	}
-	p := s.P[n]
-	first := p.PS[0]
-	last := p.PS[len(p.PS)-1]
+	s := p.P[n]
+	first := s.PS[0]
+	last := s.PS[len(s.PS)-1]
 	d *= 0.5 // Since we add an offset twice per point.
 	var pts []Point
-	for i, this := range p.PS {
+	for i, this := range s.PS {
 		pre := this
 		next := first
-		if i < len(p.PS)-1 {
-			next = p.PS[i+1]
+		if i < len(s.PS)-1 {
+			next = s.PS[i+1]
 		}
 
 		dX, dY := this.X-last.X, this.Y-last.Y
@@ -785,8 +785,8 @@ func (s *Shapes) Inflate(n int, d float64) error {
 	if err != nil {
 		return err
 	}
-	poly.Index = p.Index
-	s.P[n] = poly
+	poly.Index = s.Index
+	p.P[n] = poly
 	return nil
 }
 
