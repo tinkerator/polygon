@@ -731,7 +731,19 @@ func (p *Shapes) Reorder() {
 	sort.Slice(p.P, cf)
 }
 
-// Union tries to combine all of the shape outlines into union outlines.
+// Add enhances p by importing s into it. No effort is made to
+// unionize overlapping outlines. Call Union on the returned shapes
+// for that. This function alters p, but not s.
+func (p *Shapes) Add(s *Shapes) *Shapes {
+	for _, o := range s.P {
+		p = p.Builder(o.PS...)
+	}
+	p.Reorder()
+	return p
+}
+
+// Union tries to combine all of the overlapping shape outlines into
+// union outlines.
 func (p *Shapes) Union() {
 	p.Reorder()
 	for i := 1; i < len(p.P); i++ {
