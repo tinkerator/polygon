@@ -498,8 +498,19 @@ func (a Point) Inside(p *Shape) bool {
 	to.X = p.MaxX + 1
 	inside := false
 	prev := p.PS[len(p.PS)-1]
-	for _, next := range p.PS {
+	for i, next := range p.PS {
 		hit, _, _, _ := intersect(a, to, prev, next)
+		if hit && math.Abs(a.Y-prev.Y) < Zeroish {
+			// The prev point lies on the line a->to, so
+			// we only consider it to be worth double
+			// counting if the line doubles back on
+			// itself.
+			pprev := p.PS[(i+len(p.PS)-2)%len(p.PS)]
+			if cf := (prev.Y - pprev.Y) * (next.Y - prev.Y); cf > 0 {
+				prev = next
+				continue
+			}
+		}
 		if hit {
 			inside = !inside
 		}
