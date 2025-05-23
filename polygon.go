@@ -424,7 +424,8 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		} else if MatchPoint(b, at) {
 			at = b
 		}
-		hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
+		// Confirm at falls within the bounding box of both lines.
+		hit = !((bb0.X-Zeroish) > at.X || (bb1.X+Zeroish) < at.X || (bb0.Y-Zeroish) > at.Y || (bb1.Y+Zeroish) < at.Y)
 		return
 	}
 	if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
