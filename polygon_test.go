@@ -1405,8 +1405,39 @@ func TestSlice(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to slice: %v", err)
 	}
-	if len(lines) != 9 {
-		t.Fatalf("got %d lines, wanted %d", len(lines), 9)
+	want := []Line{
+		{Point{1.1, 1.1}, Point{1.9, 1.1}},
+		{Point{1.1, 1.2}, Point{1.9, 1.2}},
+		{Point{1.1, 1.3}, Point{1.9, 1.3}},
+		{Point{1.1, 1.4}, Point{1.9, 1.4}},
+		{Point{1.1, 1.5}, Point{1.9, 1.5}},
+		{Point{1.1, 1.6}, Point{1.9, 1.6}},
+		{Point{1.1, 1.7}, Point{1.9, 1.7}},
+		{Point{1.1, 1.8}, Point{1.9, 1.8}},
+		{Point{1.1, 1.9}, Point{1.9, 1.9}},
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, wanted %d: %v, got: %v", len(lines), len(want), want, lines)
+	}
+	for i, line := range lines {
+		w := want[i]
+		if MatchPoint(w.From, line.From) && MatchPoint(w.To, line.To) {
+			continue
+		}
+		t.Errorf("line[%d] got=%v, want=%v", i, line, w)
+	}
+	OptimizeLines(lines)
+	for i, line := range lines {
+		w := want[i]
+		if i&1 != 0 {
+			// Invert the direction because this is a
+			// more optimal path.
+			w.From, w.To = w.To, w.From
+		}
+		if MatchPoint(w.From, line.From) && MatchPoint(w.To, line.To) {
+			continue
+		}
+		t.Errorf("line[%d] got=%v, want=%v", i, line, w)
 	}
 	s = nil
 	s = s.Builder([]Point{{1, 1}, {1.4, 1}, {1.4, 1.4}, {1.6, 1.4}, {1.6, 1}, {2, 1}, {2, 2}, {1, 2}}...)

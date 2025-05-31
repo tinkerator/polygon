@@ -934,3 +934,25 @@ func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 	}
 	return
 }
+
+// OptimizeLines rearranges the result of (*Shapes) Slice() into lines
+// that can be plotted in a shorter time. It works by reordering
+// consecutive lines when that minimizes the flight time of the
+// plotter head between lines.
+func OptimizeLines(lines []Line) {
+	var last Point
+	for i, line := range lines {
+		dF := line.From.AddX(last, -1)
+		dT := line.To.AddX(last, -1)
+		cf := dT.Dot(dT) - dF.Dot(dF)
+		if cf < 0 {
+			lines[i] = Line{
+				From: line.To,
+				To:   line.From,
+			}
+			last = line.From
+		} else {
+			last = line.To
+		}
+	}
+}
