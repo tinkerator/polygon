@@ -165,6 +165,31 @@ func Rationalize(pts []Point) (*Shape, error) {
 	}, nil
 }
 
+// Transform returns a rotated Shapes structure, p is rotated by theta
+// radians (+ve = counterclockwise) around a fixed Point, pt, and
+// scales the rotated shape by a factor of scale. The scaled and
+// rotated shape is then translated from pt to to.
+func (p *Shapes) Transform(at, to Point, theta, scale float64) *Shapes {
+	if p == nil {
+		return nil
+	}
+	var sh *Shapes
+	s := math.Sin(theta) * scale
+	c := math.Cos(theta) * scale
+	for _, v := range p.P {
+		var pts []Point
+		for _, pt := range v.PS {
+			dX, dY := pt.X-at.X, pt.Y-at.Y
+			pts = append(pts, Point{
+				X: to.X + c*dX - s*dY,
+				Y: to.Y + s*dX + c*dY,
+			})
+		}
+		sh = sh.Builder(pts...)
+	}
+	return sh
+}
+
 // Append appends a polygon shape constructed from a series of
 // consecutive points. If p is nil, it is allocated. The return value
 // is the appended collection of shapes. The newly added polygon is

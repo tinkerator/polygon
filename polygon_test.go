@@ -1418,3 +1418,25 @@ func TestSlice(t *testing.T) {
 		t.Fatalf("got %d lines, wanted %d", len(lines), 13)
 	}
 }
+
+func TestTransform(t *testing.T) {
+	var s *Shapes
+	s = s.Builder([]Point{{1, 1}, {3, 1}, {3, 2}, {1, 2}}...)
+	r := s.Transform(Point{1, 2}, Point{3, 1}, math.Pi, 1)
+	if r == nil || len(r.P) != 1 {
+		t.Fatalf("single shape expected got something else: %#v", r)
+	}
+	for i, p := range s.P {
+		c := r.P[i]
+		if len(c.PS) != len(p.PS) {
+			t.Errorf("shape=%d does not match: got=%#v want=%#v", i, p, c)
+		}
+		for j, pt := range p.PS {
+			d := c.PS[j]
+			if !MatchPoint(pt, d) {
+				t.Errorf("transformed point[%d,%d] got=%v want=%v", i, j, pt, d)
+			}
+		}
+
+	}
+}
