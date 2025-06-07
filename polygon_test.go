@@ -1448,6 +1448,34 @@ func TestSlice(t *testing.T) {
 	if len(lines) != 13 {
 		t.Fatalf("got %d lines, wanted %d", len(lines), 13)
 	}
+
+	s = nil
+	s = s.Builder([]Point{
+		{91.861, 64.235},
+		{91.894, 64.169},
+		{91.960, 64.136},
+		{94.639, 64.136},
+		{94.705, 64.169},
+		{94.738, 64.235},
+		{94.738, 66.854},
+		{94.705, 66.920},
+		{94.639, 66.953},
+		{91.960, 66.953},
+		{91.894, 66.920},
+		{91.861, 66.854},
+	}...).Builder([]Point{
+		{92.078, 64.353},
+		{92.078, 66.736},
+		{94.521, 66.736},
+		{94.521, 64.353},
+	}...)
+	lines, err = s.Slice(0, 0.05, 1)
+	if err != nil {
+		t.Errorf("slicing: %v", err)
+	}
+	if got, want := len(lines), 207; got != want {
+		t.Errorf("slice generated bad lines: got=%d want=%d", got, want)
+	}
 }
 
 func TestTransform(t *testing.T) {

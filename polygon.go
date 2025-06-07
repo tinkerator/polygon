@@ -901,7 +901,7 @@ func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 			var hits []float64
 			for _, hi := range holeI {
 				hole := s.P[hi]
-				if hole.MaxX < level || hole.MinX > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
+				if hole.MaxY < level || hole.MinY > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
 					continue
 				}
 				for k := 0; k < len(hole.PS); k++ {
@@ -921,7 +921,7 @@ func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 			hits = append(append([]float64{line.From.X - half}, hits...), line.To.X+half)
 			for hi := 0; hi < len(hits); hi += 2 {
 				from := hits[hi] + half
-				to := hits[hi] - half
+				to := hits[hi+1] - half
 				if from+half > to-half {
 					continue
 				}
