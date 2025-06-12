@@ -545,56 +545,47 @@ func (a Point) Inside(p *Shape) bool {
 	return inside
 }
 
-// combine computes the union of two Polygon shapes, indexed in p as n
-// and m. This is either a no-op, or will generate one polygon and
-// zero or more holes. The return value, banked, indicates how many
-// additional shapes from index m have been resolved. This value can
-// be negative.
-func (p *Shapes) combine(n, m int) (banked int) {
-	banked = m + 1
-	p1, p2 := p.P[n], p.P[m]
-	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
-		// Bounding boxes do not overlap.
-		return
-	}
-	// Explore polygons p1, p2 for overlaps. Consider pairs of each
-	// polygon at a time. Record each overlapping point with a
-	// lookup table entry.
-	hits := make(map[Point]bool)
-	for i := 0; i < len(p1.PS); i++ {
-		a := p1.PS[i]
-		b := p1.PS[(i+1)%len(p1.PS)]
+// crossings evaluates p1 and p2 for common points of intersection. It
+// returns n1 and n2 as the same shapes but with all of the hit points
+// inserted into both shapes.
+func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
+	n1, _ = Rationalize(p1.PS)
+	n2, _ = Rationalize(p2.PS)
+	hits = make(map[Point]bool)
+	for i := 0; i < len(n1.PS); i++ {
+		a := n1.PS[i]
+		b := n1.PS[(i+1)%len(n1.PS)]
 		if MatchPoint(a, b) {
 			// trim out points that are too close together
 			if i == 0 {
-				p1.PS = append(p1.PS[:1], p1.PS[2:]...)
+				n1.PS = append(n1.PS[:1], n1.PS[2:]...)
 			} else {
-				p1.PS = append(p1.PS[:i], p1.PS[i+1:]...)
+				n1.PS = append(n1.PS[:i], n1.PS[i+1:]...)
 			}
 			i--
 			continue
 		}
-		for j := 0; j < len(p2.PS); j++ {
-			c := p2.PS[j]
-			d := p2.PS[(j+1)%len(p2.PS)]
+		for j := 0; j < len(n2.PS); j++ {
+			c := n2.PS[j]
+			d := n2.PS[(j+1)%len(n2.PS)]
 			// Close but not equal is a source of
 			// problems, so given a close match treat a as
 			// the anchor point and move c and/or d to it.
 			if MatchPoint(a, c) && a != c {
-				p2.PS[j] = a
+				n2.PS[j] = a
 				c = a
 			}
 			if MatchPoint(a, d) && a != d {
-				p2.PS[(j+1)%len(p2.PS)] = a
+				n2.PS[(j+1)%len(n2.PS)] = a
 				d = a
 			}
 			if MatchPoint(c, d) {
 				// trim out points that are too close together
 				// preserve the 0th point.
 				if j == 0 {
-					p2.PS = append(p2.PS[:1], p2.PS[2:]...)
+					n2.PS = append(n2.PS[:1], n2.PS[2:]...)
 				} else {
-					p2.PS = append(p2.PS[:j], p2.PS[j+1:]...)
+					n2.PS = append(n2.PS[:j], n2.PS[j+1:]...)
 				}
 				j--
 				continue
@@ -613,26 +604,45 @@ func (p *Shapes) combine(n, m int) (banked int) {
 				// make use of the hits map later.
 				if MatchPoint(e, c) && e != c {
 					c = e
-					p2.PS[j] = e
+					n2.PS[j] = e
 				} else if MatchPoint(e, d) && e != d {
 					d = e
-					p2.PS[(j+1)%len(p2.PS)] = e
+					n2.PS[(j+1)%len(n2.PS)] = e
 				}
 				hits[e] = true
 				if !MatchPoint(e, c, d) {
-					tmp := append([]Point{e}, p2.PS[j+1:]...)
-					p2.PS = append(p2.PS[:j+1], tmp...)
+					tmp := append([]Point{e}, n2.PS[j+1:]...)
+					n2.PS = append(n2.PS[:j+1], tmp...)
 					// possible the next intersection will be "before" this hit.
 					j--
 				}
 				if !MatchPoint(e, a, b) {
-					tmp := append([]Point{e}, p1.PS[i+1:]...)
-					p1.PS = append(p1.PS[:i+1], tmp...)
+					tmp := append([]Point{e}, n1.PS[i+1:]...)
+					n1.PS = append(n1.PS[:i+1], tmp...)
 					b = e
 				}
 			}
 		}
 	}
+	return
+}
+
+// combine computes the union of two Polygon shapes, indexed in p as n
+// and m. This is either a no-op, or will generate one polygon and
+// zero or more holes. The return value, banked, indicates how many
+// additional shapes from index m have been resolved. This value can
+// be negative.
+func (p *Shapes) combine(n, m int) (banked int) {
+	banked = m + 1
+	p1, p2 := p.P[n], p.P[m]
+	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
+		// Bounding boxes do not overlap.
+		return
+	}
+	// Explore polygons p1, p2 for overlaps. Consider pairs of each
+	// polygon at a time. Record each overlapping point with a
+	// lookup table entry.
+	hits, p1, p2 := crossings(p1, p2)
 	if len(hits) == 0 {
 		if p1.Hole != p2.Hole {
 			banked = m + 1
