@@ -226,6 +226,18 @@ func (p *Shapes) Invert(i int) error {
 	return nil
 }
 
+// Include includes the shapes s... into p.
+func (p *Shapes) Include(s ...*Shape) *Shapes {
+	if len(s) == 0 {
+		return p
+	}
+	if p == nil {
+		p = &Shapes{}
+	}
+	p.P = append(p.P, s...)
+	return p
+}
+
 // Builder turns a set of points into a polygon shape and appends it
 // to the provided value, p. If p is nil it is allocated. If the
 // operation cannot be performed, the function panics. If you require
@@ -243,14 +255,14 @@ func (p *Shapes) Builder(pts ...Point) *Shapes {
 func (p *Shapes) Duplicate() *Shapes {
 	d := &Shapes{}
 	for _, s := range p.P {
-		var e []Point
 		d.P = append(d.P, &Shape{
-			MinX: s.MinX,
-			MinY: s.MinY,
-			MaxX: s.MaxX,
-			MaxY: s.MaxY,
-			Hole: s.Hole,
-			PS:   append(e, s.PS...),
+			MinX:  s.MinX,
+			MinY:  s.MinY,
+			MaxX:  s.MaxX,
+			MaxY:  s.MaxY,
+			Hole:  s.Hole,
+			Index: s.Index,
+			PS:    append([]Point{}, s.PS...),
 		})
 	}
 	return d
@@ -476,7 +488,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 }
 
 // dissolve eliminates collinear points from a polygon.
-func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
+func (s *Shape) dissolve() (poly *Shape, err error) {
 	if s == nil {
 		return
 	}
@@ -502,13 +514,8 @@ func (s *Shape) dissolve() (poly *Shape, dissolved bool) {
 			continue
 		}
 		pts = append(pts[:bI], pts[bI+1:]...)
-		dissolved = true
 	}
-	var err error
 	poly, err = Rationalize(pts)
-	if err != nil {
-		log.Fatalf("failed to rationalize: %v", err)
-	}
 	return
 }
 
@@ -549,22 +556,19 @@ func (a Point) Inside(p *Shape) bool {
 // returns n1 and n2 as the same shapes but with all of the hit points
 // inserted into both shapes.
 func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
-	n1, _ = Rationalize(p1.PS)
-	n2, _ = Rationalize(p2.PS)
+	var err error
+	n1, err = p1.dissolve()
+	if err != nil {
+		log.Fatalf("p1=%v dissolves to %v: %v", p1, n1, err)
+	}
+	n2, err = p2.dissolve()
+	if err != nil {
+		log.Fatalf("p2=%v dissolves to %v: %v", p2, n2, err)
+	}
 	hits = make(map[Point]bool)
 	for i := 0; i < len(n1.PS); i++ {
 		a := n1.PS[i]
 		b := n1.PS[(i+1)%len(n1.PS)]
-		if MatchPoint(a, b) {
-			// trim out points that are too close together
-			if i == 0 {
-				n1.PS = append(n1.PS[:1], n1.PS[2:]...)
-			} else {
-				n1.PS = append(n1.PS[:i], n1.PS[i+1:]...)
-			}
-			i--
-			continue
-		}
 		for j := 0; j < len(n2.PS); j++ {
 			c := n2.PS[j]
 			d := n2.PS[(j+1)%len(n2.PS)]
@@ -578,17 +582,6 @@ func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
 			if MatchPoint(a, d) && a != d {
 				n2.PS[(j+1)%len(n2.PS)] = a
 				d = a
-			}
-			if MatchPoint(c, d) {
-				// trim out points that are too close together
-				// preserve the 0th point.
-				if j == 0 {
-					n2.PS = append(n2.PS[:1], n2.PS[2:]...)
-				} else {
-					n2.PS = append(n2.PS[:j], n2.PS[j+1:]...)
-				}
-				j--
-				continue
 			}
 			hit, _, _, e := intersect(a, b, c, d)
 			if hit {
@@ -627,59 +620,33 @@ func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
 	return
 }
 
-// combine computes the union of two Polygon shapes, indexed in p as n
-// and m. This is either a no-op, or will generate one polygon and
-// zero or more holes. The return value, banked, indicates how many
-// additional shapes from index m have been resolved. This value can
-// be negative.
-func (p *Shapes) combine(n, m int) (banked int) {
-	banked = m + 1
-	p1, p2 := p.P[n], p.P[m]
-	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
-		// Bounding boxes do not overlap.
-		return
-	}
-	// Explore polygons p1, p2 for overlaps. Consider pairs of each
-	// polygon at a time. Record each overlapping point with a
-	// lookup table entry.
-	hits, p1, p2 := crossings(p1, p2)
-	if len(hits) == 0 {
-		if p1.Hole != p2.Hole {
-			banked = m + 1
-			return
-		}
-		// No intersections, but one polygon might consume other.
-		if p1.PS[0].Inside(p2) {
-			p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
-			p.P = append(p.P[:n], p.P[n+1:]...)
-			banked = n + 1
-			return
-		}
-		if p2.PS[0].Inside(p1) {
-			p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
-			p.P = append(p.P[:m], p.P[m+1:]...)
-			banked = m
-			return
-		}
-		return
-	}
-
+// outlines combines two shapes with common crossing points enumerated
+// into a series of non-overlapping shapes. The first returned shape
+// has the same Hole property as p1, but all additional shapes
+// returned are guarantied to be holes.
+func outlines(p1, p2 *Shape, hits map[Point]bool) *Shapes {
 	src1, src2 := p1.PS, p2.PS
-	var pts, extra1, extra2 []Point
+	var pts []Point
 	var offset1, offset2 int
 
-	// Initially, we step around p2 until we find the intersection
-	// point of interest, and then we increment j instead to find
-	// subsequent intersection points in p2.
+	// Initially, we step around p1 (the "first" sorted polygon)
+	// until we find an intersection point of interest, and then
+	// we increment j to find that same point. Subsequent
+	// intersection points may be from p2 and we may alternate
+	// back and forth p1 at each subsequent intersection point. We
+	// only traverse p1 once, and because it is on the outer hull
+	// of the combined shape, we must end there.
 	lockedOn := false
+	// keep a record of points that we have consumed for the outer
+	// hull - these won't be in any residual holes.
+	used := make(map[Point]bool)
 	for i, j := 0, 0; i < len(src1); {
 		pt1 := src1[(offset1+i)%len(src1)]
 		if hits[pt1] {
-			// crossing point need to find it.
+			// need to find this crossing point.
 			cmp := src2[(offset2+j)%len(src2)]
 			if cmp != pt1 {
 				if lockedOn {
-					extra2 = append(extra2, cmp)
 					j++
 				} else {
 					offset2++
@@ -690,66 +657,142 @@ func (p *Shapes) combine(n, m int) (banked int) {
 			ptKeep := src1[(offset1+i+1)%len(src1)]
 			ptSwap := src2[(offset2+j+1)%len(src2)]
 			if moreClockwise(pt1, ptSwap, ptKeep) {
-				i++
 				src1, src2 = src2, src1
-				i, j = j, i
+				i, j = j, i+1
 				offset1, offset2 = offset2, offset1
-				extra1, extra2 = extra2, extra1
 			}
+		} else {
+			// only count non-crossing points as used
+			used[pt1] = true
 		}
 		i++
 		pts = append(pts, pt1)
 	}
 	union, err := Rationalize(pts)
 	if err != nil {
-		log.Fatalf("union polygon failed to rationailze: %v", err)
-	}
-	was := len(union.PS)
-	union, dissolved := union.dissolve()
-	if dissolved && was < len(union.PS) {
-		log.Printf("dissolved negative points was=%d, is=%d", was, len(union.PS))
+		log.Fatalf("union polygon failed to rationalize: %v", err)
 	}
 	union.Index = fmt.Sprint("(", p1.Index, "+", p2.Index, ")")
-	rest := p.P[m+1:]
-	keep := append([]*Shape{}, p.P[n+1:m]...)
-	var poly *Shapes
-	for since, i := -1, 0; i < len(extra1); i++ {
-		if hits[extra1[i]] {
-			if since < 0 {
-				since = i
-				continue
-			} else {
-				if i+1-since > 2 {
-					poly = poly.Builder(extra1[since : i+1]...)
-				}
-				since = -1
-				continue
-			}
+
+	polys := &Shapes{
+		P: []*Shape{union},
+	}
+
+	var extra1, extra2 []Point
+	for _, pt := range p1.PS {
+		if !used[pt] {
+			extra1 = append(extra1, pt)
 		}
 	}
-	for since, i := -1, 0; i < len(extra2); i++ {
-		if hits[extra2[i]] {
-			if since < 0 {
-				since = i
-				continue
-			} else {
-				if i+1-since > 2 {
-					poly = poly.Builder(extra2[since : i+1]...)
-				}
-				since = -1
-				continue
-			}
+	for _, pt := range p2.PS {
+		if !used[pt] {
+			extra2 = append(extra2, pt)
 		}
 	}
+
+	// What remains in extra1 and extra2 are line segments that
+	// begin and end with crossing points. We match crossing point
+	// pairs from both of these arrays, to form closed polygons.
+	pts = nil
+	for i := 0; i < len(extra1); {
+		pt0 := extra1[i]
+		dup := true
+		i++
+		pts = append(pts, pt0)
+		var pt1 Point
+		for i < len(extra1) {
+			pt1 = extra1[i]
+			pts = append(pts, pt1)
+			if hits[pt1] {
+				break
+			}
+			dup = false
+			i++
+		}
+		offset := 0
+		for ; offset < len(extra2); offset++ {
+			if pt1 == extra2[offset] {
+				break
+			}
+		}
+		for j := 1; j < len(extra2); j++ {
+			pt2 := extra2[(offset+j)%len(extra2)]
+			if pt2 == pt0 {
+				break
+			}
+			dup = dup && hits[pt2]
+			pts = append(pts, pt2)
+		}
+		if !dup && len(pts) > 2 {
+			s, err := Rationalize(pts)
+			if err == nil && s.Hole {
+				s.Index = fmt.Sprint("(", p1.Index, "-", p2.Index, "|", len(polys.P)+1)
+				polys = polys.Include(s)
+			}
+		}
+		pts = nil
+	}
+	return polys
+}
+
+// combine computes the union of two Polygon shapes, indexed in p as n
+// and m. This is either a no-op, or will generate one polygon and
+// zero or more holes. The return value, banked, indicates how many
+// additional shapes from index m have been resolved. This value can
+// be negative.
+func (p *Shapes) combine(n, m int) (banked int) {
+	banked = m + 1
+	p1, p2 := p.P[n], p.P[m]
+	if p2.Hole {
+		// This code is not the place we trim holes (see trimHole()).
+		return
+	}
+	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
+		// Bounding boxes do not overlap.
+		return
+	}
+	hits, p1, p2 := crossings(p1, p2)
+
+	// no crossing points, so process the three cases.
+	if len(hits) == 0 {
+		// No intersections, but one polygon might consume other.
+		if p1.PS[0].Inside(p2) {
+			p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
+			p.P = append(p.P[:n], p.P[n+1:]...)
+			banked = n + 1
+			return
+		}
+		// Or vise versa.
+		if p2.PS[0].Inside(p1) {
+			p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
+			p.P = append(p.P[:m], p.P[m+1:]...)
+			banked = m
+			return
+		}
+		return
+	}
+
+	// Shapes overlap, so resolve them into non-overlapping
+	// shapes.
+	polys := outlines(p1, p2, hits)
+	for k := 0; k < len(polys.P); {
+		if tmp, err := polys.P[k].dissolve(); err != nil {
+			polys.P = append(polys.P[:k], polys.P[k+1:]...)
+		} else {
+			p2.Index = fmt.Sprintf("%s^%d", p1.Index, k)
+			polys.P[k] = tmp
+			k++
+		}
+	}
+	replace := polys.P[0]
+	rest := append([]*Shape{}, p.P[m+1:]...)
+	keep := append(p.P[n+1:m], polys.P[1:]...)
+	p.P = append(append(p.P[:n], replace), append(keep, rest...)...)
+
 	// The merged polygon may overlap with a previously
 	// non-overlapping polygon, so backtrack to the one
 	// immediately after this merged polygon.
 	banked = n + 1
-	if poly != nil {
-		keep = append(poly.P, keep...)
-	}
-	keep = append(append([]*Shape{union}, keep...), rest...)
-	p.P = append(p.P[:n], keep...)
 	return
 }
 
@@ -789,15 +832,82 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 	return p
 }
 
-// Union tries to combine all of the overlapping shape outlines into
-// union outlines.
+// trimHole clips a hole to avoid all subsequent non-holes. It then
+// determines which non-holes fall completely within what remains of
+// this hole and collect those immediately after this hole.
+func (p *Shapes) trimHole(i int, ref *Shapes) int {
+	var islands []int
+	for j := 0; j < len(ref.P); j++ {
+		p1, p2 := p.P[i], ref.P[j]
+		if p2.Hole {
+			// If any of these exist, we are likely in
+			// trouble.  TODO consider treating this as an
+			// error instead.
+			continue
+		}
+		if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
+			// Bounding boxes do not overlap.
+			continue
+		}
+		hits, p1, p2 := crossings(p1, p2)
+		if len(hits) == 0 {
+			// No intersections, one shape inside other?
+			if p1.PS[0].Inside(p2) {
+				// p1 hole is eliminated by shape, p2
+				p.P = append(p.P[:i], p.P[i+1:]...)
+				return i
+			}
+			if p2.PS[0].Inside(p1) {
+				// p2 polygon is an island inside p1
+				islands = append(islands, j)
+			}
+			continue
+		}
+		polys := outlines(p1, p2, hits)
+		for k := 0; k < len(polys.P); {
+			if !polys.P[k].Hole {
+				polys.P = append(polys.P[:k], polys.P[k+1:]...)
+			} else if p2, err := polys.P[k].dissolve(); err != nil {
+				polys.P = append(polys.P[:k], polys.P[k+1:]...)
+			} else {
+				p2.Index = fmt.Sprintf("%s^%d", p1.Index, k)
+				polys.P[k] = p2
+				k++
+			}
+		}
+		// Replace single hole with hole fragments
+		p.P = append(p.P[:i], append(polys.P, p.P[i+1:]...)...)
+	}
+	// XXX - reevaluate all of the islands for being inside what
+	// remains of the hole.
+	return i + 1
+}
+
+// Union tries to combine all of the overlapping non-hole shape
+// outlines into outlines, and hole outlines. Note, calling Union
+// multiple times as you build up a group of Shapes will eventually do
+// the wrong thing. The outline shapes and holes contain only summary
+// information that may be insufficient to use for subsequent union
+// operations.
 func (p *Shapes) Union() {
 	p.Reorder()
-	for i := 1; i < len(p.P); i++ {
-		for j := i; j < len(p.P); {
-			j = p.combine(i-1, j)
-			if j < len(p.P) && p.P[i-1].MaxX < p.P[j].MinX {
-				break // next polygon too far right to overlap
+	ref := p.Duplicate() // clip holes with original polygons.
+	for i := 0; i < len(p.P)-1; i++ {
+		for j := i + 1; j < len(p.P); {
+			var hs []string
+			for k := 0; k < len(p.P); k++ {
+				h := fmt.Sprintf("%v", p.P[k].Hole)
+				if k == i {
+					h = fmt.Sprint("<", h, ">")
+				} else if k == j {
+					h = fmt.Sprint("[", h, "]")
+				}
+				hs = append(hs, h)
+			}
+			if p.P[j].Hole {
+				j = p.trimHole(j, ref)
+			} else {
+				j = p.combine(i, j)
 			}
 		}
 	}
@@ -813,7 +923,7 @@ func (p *Shapes) Inflate(n int, d float64) error {
 	if d == 0 {
 		return nil // nothing needed
 	}
-	s := p.P[n]
+	s, _ := p.P[n].dissolve()
 	first := s.PS[0]
 	last := s.PS[len(s.PS)-1]
 	d *= 0.5 // Since we add an offset twice per point.

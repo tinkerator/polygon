@@ -326,6 +326,33 @@ func TestUnion(t *testing.T) {
 		}
 	}
 
+	ss = nil
+	ss = ss.Builder([]Point{
+		{X: 1, Y: 1},
+		{X: 2, Y: 1},
+		{X: 2, Y: 2},
+		{X: 1, Y: 2},
+	}...).Builder([]Point{
+		{X: 2, Y: 0},
+		{X: 3, Y: 0},
+		{X: 3, Y: 2},
+		{X: 2, Y: 2},
+	}...)
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	us = ss.P[0].PS
+	expect = []Point{{1, 1}, {2, 1}, {2, 0}, {3, 0}, {3, 2}, {1, 2}}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; got != want {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+
 	// Validate coincident heavy overlaps.
 	ss = nil
 	ss = ss.Builder([]Point{
@@ -345,33 +372,6 @@ func TestUnion(t *testing.T) {
 	}
 	us = ss.P[0].PS
 	expect = []Point{{0, 0}, {1.5, 0}, {1.5, 1}, {2, 1}, {2, 2}, {1, 2}, {1, 1}, {0, 1}}
-	if len(us) != len(expect) {
-		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
-	}
-	for i, got := range us {
-		if want := expect[i]; got != want {
-			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
-		}
-	}
-
-	ss = nil
-	ss = ss.Builder([]Point{
-		{X: 1, Y: 1},
-		{X: 2, Y: 1},
-		{X: 2, Y: 2},
-		{X: 1, Y: 2},
-	}...).Builder([]Point{
-		{X: 2, Y: 0},
-		{X: 3, Y: 0},
-		{X: 3, Y: 2},
-		{X: 2, Y: 2},
-	}...)
-	ss.Union()
-	if len(ss.P) != 1 {
-		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
-	}
-	us = ss.P[0].PS
-	expect = []Point{{1, 1}, {2, 1}, {2, 0}, {3, 0}, {3, 2}, {1, 2}}
 	if len(us) != len(expect) {
 		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
 	}
@@ -463,6 +463,7 @@ func TestUnion(t *testing.T) {
 		}
 	}
 
+	// first poly subset of second against corner.
 	ss = nil
 	ss = ss.Builder([]Point{
 		{X: 0, Y: 0},
@@ -611,6 +612,25 @@ func TestUnion(t *testing.T) {
 	for i, got := range us {
 		if want := expect[i]; got != want {
 			t.Errorf("union[1] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+}
+
+func TestVoids(t *testing.T) {
+	var ss *Shapes
+	ss = ss.Builder([]Point{
+		{0, 0}, {4, 0}, {4, 2}, {2, 2}, {2, 4}, {0, 4},
+	}...).Builder([]Point{
+		{1, 3}, {3, 3}, {3, 1}, {5, 1}, {5, 5}, {1, 5},
+	}...)
+	ss.Union()
+	if len(ss.P) != 2 {
+		t.Fatalf("expecting two polys, but got %d", len(ss.P))
+	}
+	failed := ss.P[0].Hole || !ss.P[1].Hole
+	if failed {
+		for i, p := range ss.P {
+			t.Errorf("p[%d] = %v", i, p)
 		}
 	}
 }
@@ -1344,6 +1364,30 @@ func TestInflate(t *testing.T) {
 			t.Errorf("inflated point[%d]: got=%v, want=%v", i, got, want)
 		}
 	}
+
+	s = nil
+	s = s.Builder([]Point{
+		{102.1239, 64.0655},
+		{102.13575919535299, 64.03686936974003},
+		{102.13391259798223, 64.0354832100339},
+		{102.19111259798223, 63.9592832100339},
+		{102.19295919535297, 63.96066936974003},
+		{102.19574466094068, 63.95394466094067},
+		{102.2311, 63.9393},
+		{102.26645533905932, 63.95394466094067},
+		{102.2811, 63.9893},
+		{102.26924080464703, 64.01793063025997},
+		{102.27108740201777, 64.0193167899661},
+		{102.21388740201778, 64.0955167899661},
+		{102.21204080464702, 64.09413063026},
+		{102.20925533905933, 64.10085533905932},
+		{102.1739, 64.1155},
+		{102.13854466094068, 64.10085533905932},
+	}...)
+	if err := s.Inflate(0, .1); err != nil {
+		t.Fatalf("failed to inflate: %v", err)
+	}
+	t.Errorf("inflated: %v", s.P[0])
 }
 
 func TestNarrows(t *testing.T) {
