@@ -836,7 +836,7 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 // determines which non-holes fall completely within what remains of
 // this hole and collect those immediately after this hole.
 func (p *Shapes) trimHole(i int, ref *Shapes) int {
-	var islands []int
+	islands := false
 	for j := 0; j < len(ref.P); j++ {
 		p1, p2 := p.P[i], ref.P[j]
 		if p2.Hole {
@@ -859,7 +859,7 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 			}
 			if p2.PS[0].Inside(p1) {
 				// p2 polygon is an island inside p1
-				islands = append(islands, j)
+				islands = true
 			}
 			continue
 		}
@@ -878,8 +878,11 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 		// Replace single hole with hole fragments
 		p.P = append(p.P[:i], append(polys.P, p.P[i+1:]...)...)
 	}
-	// XXX - reevaluate all of the islands for being inside what
-	// remains of the hole.
+	if !islands {
+		return i + 1
+	}
+	// TODO investigate all remaining islands within what remains
+	// of the hole, p.P[i].
 	return i + 1
 }
 
@@ -894,16 +897,6 @@ func (p *Shapes) Union() {
 	ref := p.Duplicate() // clip holes with original polygons.
 	for i := 0; i < len(p.P)-1; i++ {
 		for j := i + 1; j < len(p.P); {
-			var hs []string
-			for k := 0; k < len(p.P); k++ {
-				h := fmt.Sprintf("%v", p.P[k].Hole)
-				if k == i {
-					h = fmt.Sprint("<", h, ">")
-				} else if k == j {
-					h = fmt.Sprint("[", h, "]")
-				}
-				hs = append(hs, h)
-			}
 			if p.P[j].Hole {
 				j = p.trimHole(j, ref)
 			} else {
