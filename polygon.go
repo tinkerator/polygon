@@ -735,6 +735,51 @@ func outlines(p1, p2 *Shape, hits map[Point]bool) *Shapes {
 	return polys
 }
 
+// insider computes whether the result of some crossings() call
+// identifies a shape contains another.
+func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
+	if len(a.PS) == len(hits) && len(b.PS) == len(hits) {
+		return true, true
+	}
+	if len(hits) == 0 {
+		aInB = a.PS[0].Inside(b)
+		bInA = b.PS[0].Inside(a)
+		return
+	}
+	cA, cB := 0, 0
+	aInB, bInA = true, true
+	for _, pt := range a.PS {
+		if !hits[pt] {
+			cA++
+			aInB = aInB && pt.Inside(b)
+			if !aInB {
+				break
+			}
+		}
+	}
+	for _, pt := range b.PS {
+		if !hits[pt] {
+			cB++
+			bInA = bInA && pt.Inside(a)
+			if !bInA {
+				break
+			}
+		}
+	}
+	// Must have at least one point inside.
+	aInB = aInB && (cA != 0)
+	bInA = bInA && (cB != 0)
+	return
+}
+
+// Inside determines if a and b envelop one another. A return of
+// false, false implies they do not occupy a fully common space. A
+// return of true, true implies the two shapes are fully coincident.
+func (a *Shape) Inside(b *Shape) (aInB, bInA bool) {
+	hits, p1, p2 := crossings(a, b)
+	return insider(hits, p1, p2)
+}
+
 // combine computes the union of two Polygon shapes, indexed in p as n
 // and m. This is either a no-op, or will generate one polygon and
 // zero or more holes. The return value, banked, indicates how many
@@ -752,23 +797,20 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		return
 	}
 	hits, p1, p2 := crossings(p1, p2)
-
-	// no crossing points, so process the three cases.
+	i1, i2 := insider(hits, p1, p2)
+	if i2 {
+		p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
+		p.P = append(p.P[:m], p.P[m+1:]...)
+		banked = m
+		return
+	}
+	if i1 {
+		p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
+		p.P = append(p.P[:n], p.P[n+1:]...)
+		banked = n + 1
+		return
+	}
 	if len(hits) == 0 {
-		// No intersections, but one polygon might consume other.
-		if p1.PS[0].Inside(p2) {
-			p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
-			p.P = append(p.P[:n], p.P[n+1:]...)
-			banked = n + 1
-			return
-		}
-		// Or vise versa.
-		if p2.PS[0].Inside(p1) {
-			p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
-			p.P = append(p.P[:m], p.P[m+1:]...)
-			banked = m
-			return
-		}
 		return
 	}
 
@@ -850,17 +892,18 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 			continue
 		}
 		hits, p1, p2 := crossings(p1, p2)
+		i1, i2 := insider(hits, p1, p2)
+		if i1 {
+			// p1 hole is eliminated by shape, p2
+			p.P = append(p.P[:i], p.P[i+1:]...)
+			return i
+		}
+		if i2 {
+			// p2 polygon is an island inside p1
+			islands = true
+			continue
+		}
 		if len(hits) == 0 {
-			// No intersections, one shape inside other?
-			if p1.PS[0].Inside(p2) {
-				// p1 hole is eliminated by shape, p2
-				p.P = append(p.P[:i], p.P[i+1:]...)
-				return i
-			}
-			if p2.PS[0].Inside(p1) {
-				// p2 polygon is an island inside p1
-				islands = true
-			}
 			continue
 		}
 		polys := outlines(p1, p2, hits)
