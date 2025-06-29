@@ -165,31 +165,6 @@ func Rationalize(pts []Point) (*Shape, error) {
 	}, nil
 }
 
-// Transform returns a rotated Shapes structure, p is rotated by theta
-// radians (+ve = counterclockwise) around a fixed Point, pt, and
-// scales the rotated shape by a factor of scale. The scaled and
-// rotated shape is then translated from pt to to.
-func (p *Shapes) Transform(at, to Point, theta, scale float64) *Shapes {
-	if p == nil {
-		return nil
-	}
-	var sh *Shapes
-	s := math.Sin(theta) * scale
-	c := math.Cos(theta) * scale
-	for _, v := range p.P {
-		var pts []Point
-		for _, pt := range v.PS {
-			dX, dY := pt.X-at.X, pt.Y-at.Y
-			pts = append(pts, Point{
-				X: to.X + c*dX - s*dY,
-				Y: to.Y + s*dX + c*dY,
-			})
-		}
-		sh = sh.Builder(pts...)
-	}
-	return sh
-}
-
 // Append appends a polygon shape constructed from a series of
 // consecutive points. If p is nil, it is allocated. The return value
 // is the appended collection of shapes. The newly added polygon is
@@ -249,6 +224,31 @@ func (p *Shapes) Builder(pts ...Point) *Shapes {
 		panic(err)
 	}
 	return p
+}
+
+// Transform returns a rotated Shapes structure, p is rotated by theta
+// radians (+ve = counterclockwise) around a fixed Point, pt, and
+// scales the rotated shape by a factor of scale. The scaled and
+// rotated shape is then translated from pt to to.
+func (p *Shapes) Transform(at, to Point, theta, scale float64) *Shapes {
+	if p == nil {
+		return nil
+	}
+	var sh *Shapes
+	s := math.Sin(theta) * scale
+	c := math.Cos(theta) * scale
+	for _, v := range p.P {
+		var pts []Point
+		for _, pt := range v.PS {
+			dX, dY := pt.X-at.X, pt.Y-at.Y
+			pts = append(pts, Point{
+				X: to.X + c*dX - s*dY,
+				Y: to.Y + s*dX + c*dY,
+			})
+		}
+		sh = sh.Builder(pts...)
+	}
+	return sh
 }
 
 // Duplicate makes an independent copy of a set of polygon shapes.
@@ -810,7 +810,12 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		banked = n + 1
 		return
 	}
-	if len(hits) == 0 {
+	if len(hits) < 2 {
+		// A single crossing point implies two shapes (that do
+		// not envelop one another) are touching at a single
+		// point. We do not consider these as something that
+		// can be combined. No crossing points implies we have
+		// no overlap.
 		return
 	}
 
@@ -821,19 +826,16 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		if tmp, err := polys.P[k].dissolve(); err != nil {
 			polys.P = append(polys.P[:k], polys.P[k+1:]...)
 		} else {
-			p2.Index = fmt.Sprintf("%s^%d", p1.Index, k)
+			tmp.Index = fmt.Sprintf("%s^%d", p1.Index, k)
 			polys.P[k] = tmp
 			k++
 		}
 	}
-	replace := polys.P[0]
 	rest := append([]*Shape{}, p.P[m+1:]...)
-	keep := append(p.P[n+1:m], polys.P[1:]...)
-	p.P = append(append(p.P[:n], replace), append(keep, rest...)...)
+	next := append(polys.P, p.P[n+1:m]...)
+	p.P = append(append(p.P[:n], next...), rest...)
 
-	// The merged polygon may overlap with a previously
-	// non-overlapping polygon, so backtrack to the one
-	// immediately after this merged polygon.
+	// Return pointing to the first of the polys Holes (if any).
 	banked = n + 1
 	return
 }
@@ -853,6 +855,7 @@ func (p *Shapes) Reorder() {
 		} else if cmp > 0 {
 			return false
 		}
+		// Lower Left is the same, so pick larger in X, then Y.
 		if cmp := p.P[a].MaxX - p.P[b].MaxX; cmp > 0 {
 			return true
 		} else if cmp < 0 {
@@ -867,8 +870,12 @@ func (p *Shapes) Reorder() {
 // unionize overlapping outlines. Call Union on the returned shapes
 // for that. This function alters p, but not s.
 func (p *Shapes) Add(s *Shapes) *Shapes {
-	for _, o := range s.P {
-		p = p.Builder(o.PS...)
+	if s != nil {
+		for _, o := range s.P {
+			p = p.Builder(o.PS...)
+			poly := p.P[len(p.P)-1]
+			poly.Index = fmt.Sprintf("%s.%s", poly.Index, o.Index)
+		}
 	}
 	p.Reorder()
 	return p
@@ -876,17 +883,13 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 
 // trimHole clips a hole to avoid all subsequent non-holes. It then
 // determines which non-holes fall completely within what remains of
-// this hole and collect those immediately after this hole.
-func (p *Shapes) trimHole(i int, ref *Shapes) int {
+// this hole and collects the Union of those shapes immediately after
+// this hole. The hole and its content are placed at the end of the
+// p.P array.
+func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 	islands := false
 	for j := 0; j < len(ref.P); j++ {
 		p1, p2 := p.P[i], ref.P[j]
-		if p2.Hole {
-			// If any of these exist, we are likely in
-			// trouble.  TODO consider treating this as an
-			// error instead.
-			continue
-		}
 		if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 			// Bounding boxes do not overlap.
 			continue
@@ -894,16 +897,16 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 		hits, p1, p2 := crossings(p1, p2)
 		i1, i2 := insider(hits, p1, p2)
 		if i1 {
-			// p1 hole is eliminated by shape, p2
+			// One of the ref shapes eliminates p1.
 			p.P = append(p.P[:i], p.P[i+1:]...)
-			return i
+			return i, holed
 		}
 		if i2 {
 			// p2 polygon is an island inside p1
 			islands = true
 			continue
 		}
-		if len(hits) == 0 {
+		if len(hits) < 2 {
 			continue
 		}
 		polys := outlines(p1, p2, hits)
@@ -919,14 +922,65 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 			}
 		}
 		// Replace single hole with hole fragments
-		p.P = append(p.P[:i], append(polys.P, p.P[i+1:]...)...)
+		empty := len(polys.P) == 0
+		rest := append(polys.P, p.P[i+1:]...)
+		p.P = append(p.P[:i], rest...)
+		if empty {
+			return i, holed // nothing left of hole so done.
+		}
 	}
+	p1 := p.P[i]
+	holed = holed.Include(p1)
 	if !islands {
-		return i + 1
+		p.P = append(p.P[:i], p.P[i+1:]...)
+		return i, holed
 	}
-	// TODO investigate all remaining islands within what remains
-	// of the hole, p.P[i].
-	return i + 1
+
+	// While trimming the hole, p1, we've seen at least one shape
+	// that fell entirely within it. Having completed the
+	// trimming, we scan all the shapes again and break out those
+	// that still fall within this hole into a set of shapes we
+	// need to process independently. This handles situations
+	// where shapes are enclosed by frames of shapes.
+	objs := make(map[int]bool)
+	var inner *Shapes
+	for k, s := range p.P {
+		if k <= i {
+			continue
+		}
+		if _, inside := p1.Inside(s); inside {
+			inner = inner.Include(s)
+			objs[k] = true
+		}
+	}
+	if inner == nil {
+		p.P = append(p.P[:i], p.P[i+1:]...)
+		return i, holed
+	}
+
+	// Collapse down this inner space of non-hole polygons to its
+	// minimal set of outlines.
+	inner.Union()
+
+	var survivors []*Shape
+	hole := i // start out where the hole was before pruning.
+	for k, s := range p.P {
+		if k == i {
+			continue
+		}
+		if objs[k] {
+			if k < i {
+				hole--
+			}
+			continue
+		}
+		survivors = append(survivors, s)
+	}
+	p.P = survivors
+	holed = holed.Add(inner)
+
+	// the entry vacated by the hole will be evaluated next
+	return hole, holed
 }
 
 // Union tries to combine all of the overlapping non-hole shape
@@ -936,17 +990,22 @@ func (p *Shapes) trimHole(i int, ref *Shapes) int {
 // information that may be insufficient to use for subsequent union
 // operations.
 func (p *Shapes) Union() {
+	if p == nil || len(p.P) < 2 {
+		return
+	}
 	p.Reorder()
 	ref := p.Duplicate() // clip holes with original polygons.
+	var holed *Shapes
 	for i := 0; i < len(p.P)-1; i++ {
 		for j := i + 1; j < len(p.P); {
 			if p.P[j].Hole {
-				j = p.trimHole(j, ref)
+				j, holed = p.trimHole(j, ref, holed)
 			} else {
 				j = p.combine(i, j)
 			}
 		}
 	}
+	p = p.Add(holed)
 }
 
 // Inflate inflates an indexed shape by distance, d. Holes are

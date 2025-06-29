@@ -1498,6 +1498,47 @@ func TestSlice(t *testing.T) {
 	}
 }
 
+func TestInnards(t *testing.T) {
+	vs := []string{
+		"########",
+		" #     #",
+		" # ### # ",
+		"## # # #",
+		"#  ### #",
+		"##     #",
+		"########",
+	}
+	for rev := 0; rev < 2; rev++ {
+		p := &Shapes{}
+		for i := 0; i < len(vs); i++ {
+			index := len(vs) - 1 - i
+			if rev == 1 {
+				index = i
+			}
+			line := vs[i]
+			y := float64(index)
+			for j := 0; j < len(line); j++ {
+				if line[j] != '#' {
+					continue
+				}
+				x := float64(j)
+				p = p.Builder([]Point{
+					{x, y}, {x + 1, y}, {x + 1, y + 1}, {x, y + 1},
+				}...)
+			}
+		}
+		p.Union()
+		if got, want := len(p.P), 4; got != want {
+			t.Errorf("wrong number of polygons: got=%d want=%d", got, want)
+		}
+		for i, s := range p.P {
+			if s.Hole != (i%2 == 1) {
+				t.Errorf("%d should be a hole=%v", i, !s.Hole)
+			}
+		}
+	}
+}
+
 func TestTransform(t *testing.T) {
 	var s *Shapes
 	s = s.Builder([]Point{{1, 1}, {3, 1}, {3, 2}, {1, 2}}...)
