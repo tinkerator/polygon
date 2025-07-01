@@ -1061,31 +1061,31 @@ func (p *Shapes) Inflate(n int, d float64) error {
 // If s is known to contain holes, and the indices of the holes are
 // provided, then the corresponding polygon holes are used to further
 // shorten the returned lines.
-func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error) {
-	if s == nil || i < 0 || i >= len(s.P) {
+func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error) {
+	if p == nil || i < 0 || i >= len(p.P) {
 		err = fmt.Errorf("invalid index %d for shapes", i)
 		return
 	}
 	// Walk from least Y+d/2, to largest Y-d/2.
-	p := s.P[i]
-	if p.Hole {
+	s := p.P[i]
+	if s.Hole {
 		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
 		return
 	}
 	half := d / 2
-	bottom, top := p.MinY, p.MaxY
+	bottom, top := s.MinY, s.MaxY
 	if top < bottom {
 		bottom = (top + bottom) / 2
 	}
 	// X range guaranteed to extend outside of polygon.
-	left, right := p.MinX-half, p.MaxX+half
+	left, right := s.MinX-half, s.MaxX+half
 	for level := bottom + half; level < top; level += half {
 		a := Point{X: left, Y: level}
 		b := Point{X: right, Y: level}
 		var ats []float64
-		for j := 0; j < len(p.PS); j++ {
-			from := p.PS[j]
-			to := p.PS[(j+1)%len(p.PS)]
+		for j := 0; j < len(s.PS); j++ {
+			from := s.PS[j]
+			to := s.PS[(j+1)%len(s.PS)]
 			hit, _, _, e := intersect(a, b, from, to)
 			if !hit {
 				continue
@@ -1115,7 +1115,7 @@ func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 			// overlap at all.
 			var hits []float64
 			for _, hi := range holeI {
-				hole := s.P[hi]
+				hole := p.P[hi]
 				if hole.MaxY < level || hole.MinY > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
 					continue
 				}
@@ -1150,8 +1150,99 @@ func (s *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 	return
 }
 
-// OptimizeLines rearranges the result of (*Shapes) Slice() into lines
-// that can be plotted in a shorter time. It works by reordering
+// VSlice performs the same operation as Slice, but slices with
+// vertical (dX=0) lines instead.
+func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error) {
+	if p == nil || i < 0 || i >= len(p.P) {
+		err = fmt.Errorf("invalid index %d for shapes", i)
+		return
+	}
+	// Walk from least X+d/2, to largest X-d/2.
+	s := p.P[i]
+	if s.Hole {
+		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
+		return
+	}
+	half := d / 2
+	left, right := s.MinX, s.MaxX
+	if right < left {
+		left = (right + left) / 2
+	}
+	// Y range guaranteed to extend outside of polygon.
+	below, above := s.MinY-half, s.MaxY+half
+	for level := left + half; level < right; level += half {
+		a := Point{X: level, Y: below}
+		b := Point{X: level, Y: above}
+		var ats []float64
+		for j := 0; j < len(s.PS); j++ {
+			from := s.PS[j]
+			to := s.PS[(j+1)%len(s.PS)]
+			hit, _, _, e := intersect(a, b, from, to)
+			if !hit {
+				continue
+			}
+			ats = append(ats, e.Y)
+		}
+		if len(ats) == 0 {
+			continue
+		}
+		if len(ats)&1 == 1 {
+			err = fmt.Errorf("shape %d has odd crossings at %f", i, level)
+			return
+		}
+		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
+		for j := 0; j < len(ats); j += 2 {
+			line := Line{
+				From: Point{X: level, Y: ats[j] + half},
+				To:   Point{X: level, Y: ats[j+1] - half},
+			}
+			if line.From.Y > line.To.Y {
+				continue // too short to render
+			}
+			// cut line if it overlaps a hole. Because the
+			// holes do not intersect the the perimeter of
+			// any non-hold polygon, the lines are either
+			// broken by a hole into two, or do not
+			// overlap at all.
+			var hits []float64
+			for _, hi := range holeI {
+				hole := p.P[hi]
+				if hole.MaxX < level || hole.MinX > level || hole.MinY > line.To.Y || hole.MaxY < line.From.Y {
+					continue
+				}
+				for k := 0; k < len(hole.PS); k++ {
+					a := hole.PS[k]
+					b := hole.PS[(k+1)%len(hole.PS)]
+					hit, _, _, e := intersect(line.From, line.To, a, b)
+					if hit {
+						hits = append(hits, e.Y)
+					}
+				}
+			}
+			if len(hits) == 0 {
+				lines = append(lines, line)
+				continue
+			}
+			sort.Slice(hits, func(i, j int) bool { return hits[i] < hits[j] })
+			hits = append(append([]float64{line.From.Y - half}, hits...), line.To.Y+half)
+			for hi := 0; hi < len(hits); hi += 2 {
+				from := hits[hi] + half
+				to := hits[hi+1] - half
+				if from+half > to-half {
+					continue
+				}
+				lines = append(lines, Line{
+					From: Point{X: level, Y: from},
+					To:   Point{X: level, Y: to},
+				})
+			}
+		}
+	}
+	return
+}
+
+// OptimizeLines rearranges the result of (*Shapes).[V]Slice() into
+// lines that can be plotted in a shorter time. It works by reordering
 // consecutive lines when that minimizes the flight time of the
 // plotter head between lines.
 func OptimizeLines(lines []Line) {

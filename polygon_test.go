@@ -1459,6 +1459,33 @@ func TestSlice(t *testing.T) {
 		}
 		t.Errorf("line[%d] got=%v, want=%v", i, line, w)
 	}
+
+	lines, err = s.VSlice(0, 0.2)
+	if err != nil {
+		t.Fatalf("failed to slice: %v", err)
+	}
+	want = []Line{
+		{Point{1.1, 1.1}, Point{1.1, 1.9}},
+		{Point{1.2, 1.1}, Point{1.2, 1.9}},
+		{Point{1.3, 1.1}, Point{1.3, 1.9}},
+		{Point{1.4, 1.1}, Point{1.4, 1.9}},
+		{Point{1.5, 1.1}, Point{1.5, 1.9}},
+		{Point{1.6, 1.1}, Point{1.6, 1.9}},
+		{Point{1.7, 1.1}, Point{1.7, 1.9}},
+		{Point{1.8, 1.1}, Point{1.8, 1.9}},
+		{Point{1.9, 1.1}, Point{1.9, 1.9}},
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("got %d lines, wanted %d: %v, got: %v", len(lines), len(want), want, lines)
+	}
+	for i, line := range lines {
+		w := want[i]
+		if MatchPoint(w.From, line.From) && MatchPoint(w.To, line.To) {
+			continue
+		}
+		t.Errorf("line[%d] got=%v, want=%v", i, line, w)
+	}
+
 	s = nil
 	s = s.Builder([]Point{{1, 1}, {1.4, 1}, {1.4, 1.4}, {1.6, 1.4}, {1.6, 1}, {2, 1}, {2, 2}, {1, 2}}...)
 	lines, err = s.Slice(0, 0.2)
