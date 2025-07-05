@@ -1493,6 +1493,9 @@ func TestSlice(t *testing.T) {
 		t.Fatalf("failed to slice: %v", err)
 	}
 	if len(lines) != 13 {
+		for i, line := range lines {
+			t.Errorf("[%d] %v", i, line)
+		}
 		t.Fatalf("got %d lines, wanted %d", len(lines), 13)
 	}
 

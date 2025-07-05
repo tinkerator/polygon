@@ -330,7 +330,7 @@ func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
 	}
 	delta2 := delta * delta
 	if phi*phi > 1-Zeroish {
-		// anti co-linear: calculate separation.
+		// anti collinear: calculate separation.
 		v := c.AddX(a, -1)
 		shift := v.Dot(u1)
 		v = v.AddX(u1, -shift)
@@ -377,7 +377,7 @@ func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
 		hit = true
 		return
 	}
-	// non co-linear, converging on point, P.
+	// non collinear, converging on point, P.
 	ds := c.AddX(a, -1)
 	du := Point{
 		X: (u1.X - phi*u2.X) / (1 - phi*phi),
@@ -465,8 +465,8 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		hit = !((bb0.X-Zeroish) > at.X || (bb1.X+Zeroish) < at.X || (bb0.Y-Zeroish) > at.Y || (bb1.Y+Zeroish) < at.Y)
 		return
 	}
-	if colinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(colinear) > Zeroish {
-		return // parallel but not co-linear.
+	if collinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(collinear) > Zeroish {
+		return // parallel but not collinear.
 	}
 	if a == c {
 		// ignore situation where the two lines start from the same place.
@@ -1094,8 +1094,20 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 		b := Point{X: right, Y: level}
 		var ats []float64
 		for j := 0; j < len(s.PS); j++ {
+			match := false
 			from := s.PS[j]
+			if math.Abs(from.Y-level) < Zeroish {
+				match = true
+				ats = append(ats, from.X)
+			}
 			to := s.PS[(j+1)%len(s.PS)]
+			if math.Abs(to.Y-level) < Zeroish {
+				match = true
+				ats = append(ats, to.X)
+			}
+			if match {
+				continue
+			}
 			hit, _, _, e := intersect(a, b, from, to)
 			if !hit {
 				continue
@@ -1106,7 +1118,7 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 			continue
 		}
 		if len(ats)&1 == 1 {
-			err = fmt.Errorf("shape %d has odd crossings at %f", i, level)
+			err = fmt.Errorf("shape %d has odd y-crossings at %f for a=%v b=%v %v", i, level, a, b, ats)
 			return
 		}
 		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
@@ -1115,7 +1127,7 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 				From: Point{X: ats[j] + half, Y: level},
 				To:   Point{X: ats[j+1] - half, Y: level},
 			}
-			if line.From.X > line.To.X {
+			if line.From.X >= line.To.X {
 				continue // too short to render
 			}
 			// cut line if it overlaps a hole. Because the
@@ -1185,8 +1197,20 @@ func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error
 		b := Point{X: level, Y: above}
 		var ats []float64
 		for j := 0; j < len(s.PS); j++ {
+			match := false
 			from := s.PS[j]
+			if math.Abs(from.X-level) < Zeroish {
+				match = true
+				ats = append(ats, from.Y)
+			}
 			to := s.PS[(j+1)%len(s.PS)]
+			if math.Abs(to.X-level) < Zeroish {
+				match = true
+				ats = append(ats, to.Y)
+			}
+			if match {
+				continue
+			}
 			hit, _, _, e := intersect(a, b, from, to)
 			if !hit {
 				continue
@@ -1197,7 +1221,7 @@ func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error
 			continue
 		}
 		if len(ats)&1 == 1 {
-			err = fmt.Errorf("shape %d has odd crossings at %f", i, level)
+			err = fmt.Errorf("shape %d has odd x-crossings at %f for a=%v b=%v %v", i, level, a, b, ats)
 			return
 		}
 		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
@@ -1206,7 +1230,7 @@ func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error
 				From: Point{X: level, Y: ats[j] + half},
 				To:   Point{X: level, Y: ats[j+1] - half},
 			}
-			if line.From.Y > line.To.Y {
+			if line.From.Y >= line.To.Y {
 				continue // too short to render
 			}
 			// cut line if it overlaps a hole. Because the
