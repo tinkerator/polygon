@@ -516,6 +516,9 @@ func (s *Shape) dissolve() (poly *Shape, err error) {
 		pts = append(pts[:bI], pts[bI+1:]...)
 	}
 	poly, err = Rationalize(pts)
+	if err == nil {
+		poly.Index = s.Index
+	}
 	return
 }
 
@@ -786,12 +789,19 @@ func (a *Shape) Inside(b *Shape) (aInB, bInA bool) {
 // additional shapes from index m have been resolved. This value can
 // be negative.
 func (p *Shapes) combine(n, m int) (banked int) {
+	p2, err := p.P[m].dissolve()
+	if err != nil {
+		// Drop invalid Shape (one that can't be rationalized).
+		banked = m
+		p.P = append(p.P[:m], p.P[m+1:]...)
+		return
+	}
 	banked = m + 1
-	p1, p2 := p.P[n], p.P[m]
 	if p2.Hole {
 		// This code is not the place we trim holes (see trimHole()).
 		return
 	}
+	p1 := p.P[n]
 	if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 		// Bounding boxes do not overlap.
 		return
