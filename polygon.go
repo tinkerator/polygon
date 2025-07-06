@@ -1088,40 +1088,42 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 		bottom = (top + bottom) / 2
 	}
 	// X range guaranteed to extend outside of polygon.
-	left, right := s.MinX-half, s.MaxX+half
+	left, right := s.MinX-d, s.MaxX+d
 	for level := bottom + half; level < top; level += half {
-		a := Point{X: left, Y: level}
-		b := Point{X: right, Y: level}
+		var a, b Point
+		nudge := 0.0
 		var ats []float64
-		for j := 0; j < len(s.PS); j++ {
-			match := false
-			from := s.PS[j]
-			if math.Abs(from.Y-level) < Zeroish {
-				match = true
-				ats = append(ats, from.X)
+		match := true
+		for match {
+			a = Point{X: left, Y: level + nudge}
+			b = Point{X: right, Y: level + nudge}
+			nudge += half / 13
+			match = false
+			for j := 0; j < len(s.PS); j++ {
+				from := s.PS[j]
+				to := s.PS[(j+1)%len(s.PS)]
+				if math.Abs(from.Y-a.Y) < Zeroish || math.Abs(to.Y-b.Y) < Zeroish {
+					// Too ambiguous, so nudge
+					// level and try again.
+					match = true
+					ats = nil
+					break
+				}
+				hit, _, _, e := intersect(a, b, from, to)
+				if !hit {
+					continue
+				}
+				ats = append(ats, e.X)
 			}
-			to := s.PS[(j+1)%len(s.PS)]
-			if math.Abs(to.Y-level) < Zeroish {
-				match = true
-				ats = append(ats, to.X)
-			}
-			if match {
-				continue
-			}
-			hit, _, _, e := intersect(a, b, from, to)
-			if !hit {
-				continue
-			}
-			ats = append(ats, e.X)
 		}
 		if len(ats) == 0 {
 			continue
 		}
+		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
 		if len(ats)&1 == 1 {
 			err = fmt.Errorf("shape %d has odd y-crossings at %f for a=%v b=%v %v", i, level, a, b, ats)
 			return
 		}
-		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
 		for j := 0; j < len(ats); j += 2 {
 			line := Line{
 				From: Point{X: ats[j] + half, Y: level},
@@ -1193,38 +1195,40 @@ func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error
 	// Y range guaranteed to extend outside of polygon.
 	below, above := s.MinY-half, s.MaxY+half
 	for level := left + half; level < right; level += half {
-		a := Point{X: level, Y: below}
-		b := Point{X: level, Y: above}
+		var a, b Point
+		nudge := 0.0
 		var ats []float64
-		for j := 0; j < len(s.PS); j++ {
-			match := false
-			from := s.PS[j]
-			if math.Abs(from.X-level) < Zeroish {
-				match = true
-				ats = append(ats, from.Y)
+		match := true
+		for match {
+			a := Point{X: level + nudge, Y: below}
+			b := Point{X: level + nudge, Y: above}
+			nudge += half / 13
+			match = false
+			for j := 0; j < len(s.PS); j++ {
+				from := s.PS[j]
+				to := s.PS[(j+1)%len(s.PS)]
+				if math.Abs(from.X-a.X) < Zeroish || math.Abs(to.X-b.X) < Zeroish {
+					// Too ambiguous, so nudge
+					// level and try again.
+					match = true
+					ats = nil
+					break
+				}
+				hit, _, _, e := intersect(a, b, from, to)
+				if !hit {
+					continue
+				}
+				ats = append(ats, e.Y)
 			}
-			to := s.PS[(j+1)%len(s.PS)]
-			if math.Abs(to.X-level) < Zeroish {
-				match = true
-				ats = append(ats, to.Y)
-			}
-			if match {
-				continue
-			}
-			hit, _, _, e := intersect(a, b, from, to)
-			if !hit {
-				continue
-			}
-			ats = append(ats, e.Y)
 		}
 		if len(ats) == 0 {
 			continue
 		}
+		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
 		if len(ats)&1 == 1 {
 			err = fmt.Errorf("shape %d has odd x-crossings at %f for a=%v b=%v %v", i, level, a, b, ats)
 			return
 		}
-		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
 		for j := 0; j < len(ats); j += 2 {
 			line := Line{
 				From: Point{X: level, Y: ats[j] + half},
