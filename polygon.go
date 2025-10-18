@@ -278,6 +278,14 @@ func MatchPoint(a Point, b ...Point) bool {
 	return false
 }
 
+// NotSame determines if two Points differ. This is tricky because Go
+// can't distinguish between -0 and 0, but when used as map indices
+// Points with these differences to not alias each other. As such, we
+// need to make canonical one or the other choice.
+func (a Point) NotSame(b Point) bool {
+	return math.Signbit(a.X) != math.Signbit(b.X) || math.Signbit(a.Y) != math.Signbit(b.Y) || a != b
+}
+
 // Dot computes the dot product of two vectors.
 func (a Point) Dot(b Point) float64 {
 	return a.X*b.X + a.Y*b.Y
@@ -529,25 +537,21 @@ func (a Point) Inside(p *Shape) bool {
 	}
 	// Point is inside the bounding box for p.  Consider how many
 	// times the line (a->to) intersects with a line from p.
-	// odd = inside, even = outside.
+	// odd = inside, even = outside. Note, we ignore any points
+	// that are coincident with the line (a->to).
 	to := a
 	to.X = p.MaxX + 1
 	inside := false
 	prev := p.PS[len(p.PS)-1]
-	for i, next := range p.PS {
-		hit, _, _, _ := intersect(a, to, prev, next)
-		if hit && math.Abs(a.Y-prev.Y) < Zeroish {
-			// The prev point lies on the line a->to, so
-			// we only consider it to be worth double
-			// counting if the line doubles back on
-			// itself.
-			pprev := p.PS[(i+len(p.PS)-2)%len(p.PS)]
-			if cf := (prev.Y - pprev.Y) * (next.Y - prev.Y); cf > 0 {
-				prev = next
-				continue
-			}
+	for _, next := range p.PS {
+		if math.Abs(prev.Y-a.Y) < Zeroish {
+			prev = next
+			continue
 		}
-		if hit {
+		if math.Abs(next.Y-a.Y) < Zeroish {
+			continue
+		}
+		if hit, _, _, _ := intersect(a, to, prev, next); hit {
 			inside = !inside
 		}
 		prev = next
@@ -578,11 +582,11 @@ func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
 			// Close but not equal is a source of
 			// problems, so given a close match treat a as
 			// the anchor point and move c and/or d to it.
-			if MatchPoint(a, c) && a != c {
+			if MatchPoint(a, c) && a.NotSame(c) {
 				n2.PS[j] = a
 				c = a
 			}
-			if MatchPoint(a, d) && a != d {
+			if MatchPoint(a, d) && a.NotSame(d) {
 				n2.PS[(j+1)%len(n2.PS)] = a
 				d = a
 			}
@@ -590,18 +594,18 @@ func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
 			if hit {
 				// Prefer canonical points vs derived ones.
 				// Above we've confirmed that a != b.
-				if MatchPoint(e, a) && e != a {
+				if MatchPoint(e, a) && e.NotSame(a) {
 					e = a
-				} else if MatchPoint(e, b) && e != b {
+				} else if MatchPoint(e, b) && e.NotSame(b) {
 					e = b
 				}
 				// For this polygon we nudge the
 				// points themselves. This is needed to
 				// make use of the hits map later.
-				if MatchPoint(e, c) && e != c {
+				if MatchPoint(e, c) && e.NotSame(c) {
 					c = e
 					n2.PS[j] = e
-				} else if MatchPoint(e, d) && e != d {
+				} else if MatchPoint(e, d) && e.NotSame(d) {
 					d = e
 					n2.PS[(j+1)%len(n2.PS)] = e
 				}
