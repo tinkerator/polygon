@@ -782,6 +782,34 @@ func TestIntersect(t *testing.T) {
 	}
 }
 
+// TestClock looks for intersections at (0,0) for two hands that pass
+// through this point, at different angles.
+func TestClock(t *testing.T) {
+	const N = 13
+	var zero Point
+	aI, aJ := math.Pi*2/N, math.Pi*2/(N+1)
+	for i := 0; i < N; i++ {
+		angI := aI * float64(i)
+		aA := Point{
+			X: math.Cos(angI),
+			Y: math.Sin(angI),
+		}
+		aB := zero.AddX(aA, -4)
+		for j := 1; j <= N; j++ {
+			angJ := aJ * float64(j)
+			aC := Point{
+				X: 6 * math.Cos(angJ),
+				Y: 6 * math.Sin(angJ),
+			}
+			aD := zero.AddX(aC, -0.5)
+			hit, left, hold, at := intersect(aA, aB, aC, aD)
+			if !hit || !MatchPoint(zero, at) {
+				t.Errorf("[%d,%d] %v %v %v %v -> %v %v %v %v", i, j, aA, aB, aC, aD, hit, left, hold, at)
+			}
+		}
+	}
+}
+
 func TestTrace(t *testing.T) {
 	pts := [][]Point{
 		[]Point{{X: 97.35, Y: 68.58}, {X: 97.23, Y: 68.80}, {X: 96.98, Y: 68.80}, {X: 96.85, Y: 68.58}, {X: 96.98, Y: 68.36}, {X: 97.23, Y: 68.36}},
