@@ -21,6 +21,10 @@ import (
 // millimeters).
 var Zeroish = 1e-6
 
+// Zeroish2 is used when comparing area unit values. If you override
+// Zeroish, be sure to override this accordingly.
+var Zeroish2 = Zeroish * Zeroish
+
 // Sort two numbers to be in ascending order.
 func MinMax(a, b float64) (float64, float64) {
 	if a <= b {
@@ -279,9 +283,11 @@ func MatchPoint(a Point, b ...Point) bool {
 }
 
 // NotSame determines if two Points differ. This is tricky because Go
-// can't distinguish between -0 and 0, but when used as map indices
-// Points with these differences to not alias each other. As such, we
-// need to make canonical one or the other choice.
+// can't distinguish between -0.0 and 0.0. When used as map indices
+// Points with these X or Y component differences do not, however,
+// alias each other. As such, we sometimes need to recognize this
+// difference and make a choice to force one to become the other so
+// common crossing points can be recognized.
 func (a Point) NotSame(b Point) bool {
 	return math.Signbit(a.X) != math.Signbit(b.X) || math.Signbit(a.Y) != math.Signbit(b.Y) || a != b
 }
@@ -296,7 +302,7 @@ func (a Point) Dot(b Point) float64 {
 func (a Point) Unit(b Point) (u Point, err error) {
 	v := b.AddX(a, -1)
 	l2 := v.Dot(v)
-	if l2 < Zeroish {
+	if l2 < Zeroish2 {
 		err = fmt.Errorf("a=%v and b=%v too close", a, b)
 		return
 	}
@@ -337,7 +343,7 @@ func Narrows(a, b, c, d Point, delta float64) (hit bool, w, x, y, z Point) {
 		return // more parallel than anti-parallel
 	}
 	delta2 := delta * delta
-	if phi*phi > 1-Zeroish {
+	if phi*phi > 1-Zeroish2 {
 		// anti collinear: calculate separation.
 		v := c.AddX(a, -1)
 		shift := v.Dot(u1)
@@ -445,7 +451,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		bb0.Y -= Zeroish / 2
 		bb1.Y += Zeroish / 2
 	}
-	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish {
+	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish2 {
 		if math.Abs(dABX) < Zeroish {
 			at.X = a.X
 			mCD := dCDY / dCDX
@@ -473,7 +479,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		hit = !((bb0.X-Zeroish) > at.X || (bb1.X+Zeroish) < at.X || (bb0.Y-Zeroish) > at.Y || (bb1.Y+Zeroish) < at.Y)
 		return
 	}
-	if collinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(collinear) > Zeroish {
+	if collinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(collinear) > Zeroish2 {
 		return // parallel but not collinear.
 	}
 	if a == c {
@@ -514,7 +520,7 @@ func (s *Shape) dissolve() (poly *Shape, err error) {
 			bad = true
 		} else if v, err := a.Unit(c); err != nil {
 			bad = true
-		} else if math.Abs(u.Dot(v)-1) < Zeroish {
+		} else if math.Abs(u.Dot(v)-1) < Zeroish2 {
 			bad = true
 		}
 		if !bad {
@@ -536,23 +542,26 @@ func (a Point) Inside(p *Shape) bool {
 		return false
 	}
 	// Point is inside the bounding box for p.  Consider how many
-	// times the line (a->to) intersects with a line from p.
-	// odd = inside, even = outside. Note, we ignore any points
+	// times the line (a->to) intersects with a line from p.  odd
+	// = inside, even = outside. Note, we are careful with lines
 	// that are coincident with the line (a->to).
 	to := a
 	to.X = p.MaxX + 1
 	inside := false
 	prev := p.PS[len(p.PS)-1]
+	was := 0
 	for _, next := range p.PS {
-		if math.Abs(prev.Y-a.Y) < Zeroish {
-			prev = next
-			continue
-		}
-		if math.Abs(next.Y-a.Y) < Zeroish {
-			continue
-		}
 		if hit, _, _, _ := intersect(a, to, prev, next); hit {
-			inside = !inside
+			is := 0
+			if next.Y > prev.Y+Zeroish {
+				is = 1
+			} else if next.Y < prev.Y-Zeroish {
+				is = -1
+			}
+			if is != 0 && is != was {
+				inside = !inside
+				was = is
+			}
 		}
 		prev = next
 	}
