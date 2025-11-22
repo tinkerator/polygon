@@ -2,7 +2,7 @@
 
 ## Overview
 
-This package provides routines for 2D polygons. That is non
+This [package](http://zappem.net/pub/math/polygon/) provides routines for 2D polygons. That is non
 self-intersecting multi-edged shapes with more than 2 vertex points.
 
 ## API
@@ -14,7 +14,17 @@ zappem.net/pub/math/polygon](https://pkg.go.dev/zappem.net/pub/math/polygon).
 
 ## Example
 
-See the https://github.com/tinkerator/polygons example.
+See the https://zappem.net/pub/project/polygons/ example.
+
+## TODO
+
+- A `2` in the
+  [`zappem.net/pub/graphics/hershey`](https://zappem.net/pub/graphics/hershey/)
+  `rowmand` font contains a dot of imperfection.
+
+- Still working through some issues with concave polygons. Problem
+  case: an E shape with a vertical line through the tines that do not
+  extend out of the top or bottom of the shape.
 
 ## License info
 

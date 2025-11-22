@@ -6,6 +6,30 @@ import (
 	"testing"
 )
 
+// debugPoly generates a text dump of the
+func debugPoly(gocode bool, s *Shapes) {
+	for i, p := range s.P {
+		name := fmt.Sprint("poly", i)
+		if gocode {
+			fmt.Printf("\t/* %s [%q] */ []Point{\n", name, p.Index)
+		} else {
+			fmt.Printf("%s = # %q\n", name, p.Index)
+		}
+		for _, pt := range p.PS {
+			if gocode {
+				fmt.Printf("\t\t{%.6f, %.6f},\n", pt.X, pt.Y)
+			} else {
+				fmt.Printf("  %.6f %.6f\n", pt.X, pt.Y)
+			}
+		}
+		if gocode {
+			fmt.Println("\t},")
+		} else {
+			fmt.Println("end")
+		}
+	}
+}
+
 // validate that the bounding box for a polygon is correct.
 func (p *Shapes) chk(n int) error {
 	p1 := p.P[n]
@@ -345,8 +369,71 @@ func TestGlance(t *testing.T) {
 	}
 }
 
+// Special case Union test from a font rendering.
+func TestConcaveD(t *testing.T) {
+	data := [][]Point{
+		[]Point{
+			{-1.052632, 3.771930},
+			{1.228070, 3.771930},
+			{1.228070, 4.087719},
+			{-1.052632, 4.087719},
+		},
+		[]Point{
+			{-0.157895, 0.421053},
+			{0.157895, 0.421053},
+			{0.157895, 3.929825},
+			{-0.157895, 3.929825},
+		},
+		[]Point{
+			{0.017544, 0.421053},
+			{0.017581, 0.410608},
+			{0.333296, 0.410608},
+			{0.333333, 0.424053},
+			{0.333296, 0.424497},
+		},
+		[]Point{
+			{0.017544, 0.421053},
+			{0.333333, 0.421053},
+			{0.333333, 3.929825},
+			{0.017544, 3.929825},
+		},
+	}
+	var ss *Shapes
+	for i, pts := range data {
+		ss = ss.Builder(pts...)
+		ss.P[len(ss.P)-1].Index = fmt.Sprint(i)
+	}
+	ss.Union()
+	if len(ss.P) != 1 {
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	us := ss.P[0].PS
+	expect := []Point{
+		{-1.052632, 3.77193},
+		{-0.157895, 3.77193},
+		{-0.157895, 0.421053},
+		{0.017544, 0.421053},
+		{0.017581, 0.410608},
+		{0.333296, 0.410608},
+		{0.333325, 0.421053},
+		{0.333333, 0.421053},
+		{0.333333, 3.77193},
+		{1.22807, 3.77193},
+		{1.22807, 4.087719},
+		{-1.052632, 4.087719},
+	}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; !MatchPoint(got, want) {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+}
+
 // Special case Union tests from T font rendering.
-func TestRounds(t *testing.T) {
+func TestRoundsD(t *testing.T) {
 	var ss *Shapes
 	ss = ss.Builder([]Point{
 		//poly0 =

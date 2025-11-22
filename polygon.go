@@ -762,29 +762,34 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 		bInA = b.PS[0].Inside(a)
 		return
 	}
-	cA, cB := 0, 0
+	// Since there are non-zero hits something must overlap with
+	// the other shape.
+	cA, cB, cAInB, cBInA := 0, 0, 0, 0
 	aInB, bInA = true, true
 	for _, pt := range a.PS {
 		if !hits[pt] {
 			cA++
-			aInB = aInB && pt.Inside(b)
-			if !aInB {
-				break
+			ins := pt.Inside(b)
+			if ins {
+				cAInB++
 			}
+			aInB = aInB && ins
 		}
 	}
 	for _, pt := range b.PS {
 		if !hits[pt] {
 			cB++
-			bInA = bInA && pt.Inside(a)
-			if !bInA {
-				break
+			ins := pt.Inside(a)
+			if ins {
+				cBInA++
 			}
+			bInA = bInA && ins
 		}
 	}
-	// Must have at least one point inside.
-	aInB = aInB && (cA != 0)
-	bInA = bInA && (cB != 0)
+	// Getting here, the polygons are known to not be identical,
+	// so they cannot both be inside the other.
+	aInB = aInB && (cBInA == 0) && (cA != 0)
+	bInA = bInA && (cAInB == 0) && (cB != 0)
 	return
 }
 
@@ -849,7 +854,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		if tmp, err := polys.P[k].dissolve(); err != nil {
 			polys.P = append(polys.P[:k], polys.P[k+1:]...)
 		} else {
-			tmp.Index = fmt.Sprintf("%s^%d", p1.Index, k)
+			tmp.Index = fmt.Sprint(p1.Index, "^", k)
 			polys.P[k] = tmp
 			k++
 		}
@@ -939,7 +944,7 @@ func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 			} else if p2, err := polys.P[k].dissolve(); err != nil {
 				polys.P = append(polys.P[:k], polys.P[k+1:]...)
 			} else {
-				p2.Index = fmt.Sprintf("%s^%d", p1.Index, k)
+				p2.Index = fmt.Sprint(p1.Index, "%%", p1.Index, k)
 				polys.P[k] = p2
 				k++
 			}
