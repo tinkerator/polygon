@@ -432,6 +432,54 @@ func TestConcaveD(t *testing.T) {
 	}
 }
 
+func TestConcaveE(t *testing.T) {
+	t.Skip() // TODO for fixing this
+	data := [][]Point{
+		[]Point{
+			{1, 1},
+			{5, 1},
+			{5, 3},
+			{2, 3},
+			{2, 4},
+			{5, 4},
+			{5, 5},
+			{2, 5},
+			{2, 6},
+			{5, 6},
+			{5, 8},
+			{1, 8},
+		},
+		[]Point{
+			{3, 2},
+			{4, 2},
+			{4, 7},
+			{3, 7},
+		},
+	}
+	var ss *Shapes
+	for i, pts := range data {
+		ss = ss.Builder(pts...)
+		ss.P[len(ss.P)-1].Index = fmt.Sprint(i)
+	}
+	debugPoly(false, ss)
+	ss.Union()
+	if len(ss.P) != 3 {
+		debugPoly(false, ss)
+		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+	}
+	// TODO need to test for the expected holes too.
+	us := ss.P[0].PS
+	expect := []Point{}
+	if len(us) != len(expect) {
+		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	}
+	for i, got := range us {
+		if want := expect[i]; !MatchPoint(got, want) {
+			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+		}
+	}
+}
+
 // Special case Union tests from T font rendering.
 func TestRoundsD(t *testing.T) {
 	var ss *Shapes
