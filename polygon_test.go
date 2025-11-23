@@ -90,6 +90,16 @@ func TestMinMax(t *testing.T) {
 
 func TestInside(t *testing.T) {
 	var s *Shapes
+
+	s = nil
+	s = s.Builder([]Point{
+		{1, 1}, {9, 1}, {9, 5}, {8, 5}, {6, 4},
+	}...)
+	if pt := (Point{1, 5}); pt.Inside(s.P[0]) {
+		t.Errorf("point %v should not be inside shape", pt)
+	}
+
+	s = nil
 	s = s.Builder([]Point{
 		{-3.8181818182, 12.2727272727},
 		{-0.2727272727, 12.2727272727},
@@ -432,8 +442,45 @@ func TestConcaveD(t *testing.T) {
 	}
 }
 
+func TestHull(t *testing.T) {
+	basic := []Point{
+		{1, 1},
+		{9, 1},
+		{9, 5},
+		{1, 5},
+	}
+	inside := []Point{
+		{8, 5},
+		{6, 4},
+		{7, 3},
+		{5, 2},
+		{3, 3},
+		{4, 4},
+		{3, 5},
+	}
+	// Evaluate the hull for adding that size slice of inside to
+	// basic. The hull should always have 4 points and match
+	// basic.
+	for i := 0; i < len(inside); i++ {
+		var s *Shapes
+		s = s.Builder(basic[:3]...)
+		s.P[0].PS = append(append(s.P[0].PS, inside[:i]...), basic[3])
+		hull, insides := s.P[0].Hull()
+		if (insides == nil && i != 0) || (insides != nil && len(insides) != i) {
+			t.Errorf("[%d] bad hull got=%v with these insides: %v", i, hull, insides)
+		}
+		if len(hull.PS) != len(basic) {
+			t.Errorf("[%d] bad hull got=%v want=%v", i, hull, basic)
+		}
+		for j, pt := range hull.PS {
+			if !MatchPoint(pt, basic[j]) {
+				t.Errorf("[%d] hull[%d] mismatch got=%v want=%v", i, j, pt, basic[j])
+			}
+		}
+	}
+}
+
 func TestConcaveE(t *testing.T) {
-	t.Skip() // TODO for fixing this
 	data := [][]Point{
 		[]Point{
 			{1, 1},
@@ -461,21 +508,48 @@ func TestConcaveE(t *testing.T) {
 		ss = ss.Builder(pts...)
 		ss.P[len(ss.P)-1].Index = fmt.Sprint(i)
 	}
-	debugPoly(false, ss)
 	ss.Union()
 	if len(ss.P) != 3 {
 		debugPoly(false, ss)
-		t.Fatalf("expecting a single poly, but got %d", len(ss.P))
+		t.Fatalf("expecting a 3 polygons, but got %d", len(ss.P))
 	}
-	// TODO need to test for the expected holes too.
-	us := ss.P[0].PS
-	expect := []Point{}
-	if len(us) != len(expect) {
-		t.Fatalf("expecting %d post union points: got=%v, want=%v", len(expect), us, expect)
+	expect := [][]Point{
+		[]Point{
+			{1, 1},
+			{5, 1},
+			{5, 3},
+			{4, 3},
+			{4, 4},
+			{5, 4},
+			{5, 5},
+			{4, 5},
+			{4, 6},
+			{5, 6},
+			{5, 8},
+			{1, 8},
+		},
+		[]Point{
+			{2, 3},
+			{2, 4},
+			{3, 4},
+			{3, 3},
+		},
+		[]Point{
+			{2, 5},
+			{2, 6},
+			{3, 6},
+			{3, 5},
+		},
 	}
-	for i, got := range us {
-		if want := expect[i]; !MatchPoint(got, want) {
-			t.Errorf("union[0] point[%d]: got=%v, want=%v", i, got, want)
+	for j, ex := range expect {
+		us := ss.P[j].PS
+		if len(us) != len(ex) {
+			t.Fatalf("[%d] expecting %d post union points: got=%v, want=%v", j, len(ex), us, ex)
+		}
+		for i, got := range us {
+			if want := ex[i]; !MatchPoint(got, want) {
+				t.Errorf("union[%d] point[%d]: got=%v, want=%v", j, i, got, want)
+			}
 		}
 	}
 }

@@ -255,19 +255,24 @@ func (p *Shapes) Transform(at, to Point, theta, scale float64) *Shapes {
 	return sh
 }
 
+// Duplicate duplicates a single polygon, s.
+func (s *Shape) Duplicate() *Shape {
+	return &Shape{
+		MinX:  s.MinX,
+		MinY:  s.MinY,
+		MaxX:  s.MaxX,
+		MaxY:  s.MaxY,
+		Hole:  s.Hole,
+		Index: s.Index,
+		PS:    append([]Point{}, s.PS...),
+	}
+}
+
 // Duplicate makes an independent copy of a set of polygon shapes.
 func (p *Shapes) Duplicate() *Shapes {
 	d := &Shapes{}
 	for _, s := range p.P {
-		d.P = append(d.P, &Shape{
-			MinX:  s.MinX,
-			MinY:  s.MinY,
-			MaxX:  s.MaxX,
-			MaxY:  s.MaxY,
-			Hole:  s.Hole,
-			Index: s.Index,
-			PS:    append([]Point{}, s.PS...),
-		})
+		d.P = append(d.P, s.Duplicate())
 	}
 	return d
 }
@@ -536,8 +541,9 @@ func (s *Shape) dissolve() (poly *Shape, err error) {
 	return
 }
 
-// Inside confirms that a is fully inside some polygon.
-func (a Point) Inside(p *Shape) bool {
+// prunedInside ignores all skip[Point] entries in p when computing
+// if a falls within the unskipped points of the polygon, p.
+func (a Point) prunedInside(p *Shape, skip map[Point]bool) bool {
 	if a.X < p.MinX || a.X > p.MaxX || a.Y < p.MinY || a.Y > p.MaxY {
 		return false
 	}
@@ -549,8 +555,22 @@ func (a Point) Inside(p *Shape) bool {
 	to.X = p.MaxX + 1
 	inside := false
 	prev := p.PS[len(p.PS)-1]
+	if skip != nil {
+		// Pick the penultimate point from those not in the
+		// skip map.
+		for i := len(p.PS) - 2; skip[prev]; i-- {
+			if i == 1 {
+				// Two point shape.
+				return false
+			}
+			prev = p.PS[i]
+		}
+	}
 	was := 0
 	for _, next := range p.PS {
+		if skip != nil && skip[next] {
+			continue
+		}
 		if hit, _, _, _ := intersect(a, to, prev, next); hit {
 			is := 0
 			if next.Y > prev.Y+Zeroish {
@@ -566,6 +586,43 @@ func (a Point) Inside(p *Shape) bool {
 		prev = next
 	}
 	return inside
+}
+
+// Inside confirms that a is fully inside some polygon, p.
+func (a Point) Inside(p *Shape) bool {
+	return a.prunedInside(p, nil)
+}
+
+// Determine what points in p form a convex hull that includes the
+// entire shape also returns the set of omitted points in p that fall
+// within the hull. Note, these omitted points will include those that
+// redundantly reside on the hull itself.
+func (p *Shape) Hull() (hull *Shape, contained map[Point]bool) {
+	hull = p.Duplicate()
+	contained = make(map[Point]bool)
+	revisit := false
+	for i := 1; i < len(hull.PS); {
+		pt := hull.PS[i]
+		contained[pt] = true
+		if !pt.prunedInside(hull, contained) {
+			delete(contained, pt)
+			if revisit {
+				// back track one point as that may
+				// now be revealed as contained.
+				i--
+				if i < 1 {
+					i = 1
+				}
+			} else {
+				i++
+			}
+			revisit = false
+			continue
+		}
+		hull.PS = append(hull.PS[:i], hull.PS[i+1:]...)
+		revisit = true
+	}
+	return
 }
 
 // crossings evaluates p1 and p2 for common points of intersection. It
@@ -787,9 +844,27 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 		}
 	}
 	// Getting here, the polygons are known to not be identical,
-	// so they cannot both be inside the other.
-	aInB = aInB && (cBInA == 0) && (cA != 0)
-	bInA = bInA && (cAInB == 0) && (cB != 0)
+	// so they cannot both be inside the other. Also, even if they
+	// look to be inside, perform a (expensive) check that they
+	// don't overlap with non hull points of the other polygon.
+	if aInB = aInB && (cBInA == 0) && (cA != 0); aInB {
+		_, inHA := a.Hull()
+		for pt := range inHA {
+			if hits[pt] {
+				aInB = false
+				break
+			}
+		}
+	}
+	if bInA = bInA && (cAInB == 0) && (cB != 0); bInA {
+		_, inHB := b.Hull()
+		for pt := range inHB {
+			if hits[pt] {
+				bInA = false
+				break
+			}
+		}
+	}
 	return
 }
 

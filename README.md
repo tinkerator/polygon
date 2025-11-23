@@ -20,18 +20,16 @@ See the https://zappem.net/pub/project/polygons/ example.
 
 Here are some known issues potentially gating release of v1.0.0.
 
-- Still working through some issues with concave polygons. Problem
-  case: TestConcaveE() currently configured to be skipped.
-
 - Observations from [`zappem.net/pub/graphics/hershey`](https://zappem.net/pub/graphics/hershey/) font rendering:
   - A `2` in the `rowmand` font contains a dot of imperfection. A
     potential issue with `8`, but it renders occasionally, so the
     issue with that may not be the polygon code.
   - `T` and `5` in the `astrology` font have the same dot issue.
-  - `J` in the `rowmant` is worth taking a closer look at. `T` renders
-    with a stray dot. Also, there may be an issue with `t`.
-  - `symbolic` and `timesg` fail to render and crash with my test program.
-  - `T` and `Z` have extra dots in `timesib`, `timesr` and `timesrb` fonts.
+  - `T` and `Z` have extra dots in `rowmant`, `timesib`, `timesr` and `timesrb` fonts.
+
+Some things to look into after v1.0.0.
+
+- Performance
 
 ## License info
 
