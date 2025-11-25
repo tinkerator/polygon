@@ -112,6 +112,32 @@ type Shapes struct {
 	P []*Shape
 }
 
+// Debug generates a text dump to os.Stdout of the shapes in a
+// simplified listing format or as Go code. As the name suggests, this
+// method can be used for debugging purposes and test case generation.
+func (s *Shapes) Debug(gocode bool) {
+	for i, p := range s.P {
+		name := fmt.Sprint("poly", i)
+		if gocode {
+			fmt.Printf("\t/* %s [%q] */ []Point{\n", name, p.Index)
+		} else {
+			fmt.Printf("%s = # %q\n", name, p.Index)
+		}
+		for _, pt := range p.PS {
+			if gocode {
+				fmt.Printf("\t\t{%.6f, %.6f},\n", pt.X, pt.Y)
+			} else {
+				fmt.Printf("  %.6f %.6f\n", pt.X, pt.Y)
+			}
+		}
+		if gocode {
+			fmt.Println("\t},")
+		} else {
+			fmt.Println("end")
+		}
+	}
+}
+
 // Return the bounding box lower left and top right corner points for
 // the shapes.
 func (p *Shapes) BB() (ll, tr Point) {
@@ -215,6 +241,22 @@ func (p *Shapes) Include(s ...*Shape) *Shapes {
 	}
 	p.P = append(p.P, s...)
 	return p
+}
+
+func foundNaN(text string) {
+	log.Fatalf("nan found: %q", text)
+}
+
+func checkNaN(pts ...Point) {
+	for i := 0; i < len(pts); i++ {
+		pt := pts[i]
+		if math.IsNaN(pt.X) {
+			foundNaN("X")
+		}
+		if math.IsNaN(pt.Y) {
+			foundNaN("Y")
+		}
+	}
 }
 
 // Builder turns a set of points into a polygon shape and appends it
@@ -445,6 +487,24 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
 		return
 	}
+
+	// Some canonical choices
+	if a == c {
+		// ignore situation where the two lines start from the same place.
+		return
+	}
+	at = b
+	if hit = MatchPoint(b, d); hit {
+		return
+	}
+	if hit = MatchPoint(b, c); hit {
+		return
+	}
+	at = a
+	if hit = MatchPoint(a, d); hit {
+		return
+	}
+
 	// Overlapping bounding box (extended slightly by the rounding error protection).
 	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
 	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
@@ -457,12 +517,12 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		bb1.Y += Zeroish / 2
 	}
 	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish2 {
-		if math.Abs(dABX) < Zeroish {
+		if math.Abs(dCDX) > Zeroish && math.Abs(dABX) < Zeroish {
 			at.X = a.X
 			mCD := dCDY / dCDX
 			cCD := d.Y - mCD*d.X
 			at.Y = cCD + mCD*a.X
-		} else if math.Abs(dCDX) < Zeroish {
+		} else if math.Abs(dABX) > Zeroish && math.Abs(dCDX) < Zeroish {
 			at.X = d.X
 			mAB := dABY / dABX
 			cAB := a.Y - mAB*a.X
@@ -484,24 +544,25 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		hit = !((bb0.X-Zeroish) > at.X || (bb1.X+Zeroish) < at.X || (bb0.Y-Zeroish) > at.Y || (bb1.Y+Zeroish) < at.Y)
 		return
 	}
-	if collinear := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(collinear) > Zeroish2 {
+	// The lines are (anti)parallel
+	if closeness := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(closeness) > Zeroish2 {
 		return // parallel but not collinear.
 	}
-	if a == c {
-		// ignore situation where the two lines start from the same place.
+
+	// Determine first point of contact.
+	u := b.AddX(a, -1)
+	eps := Zeroish * u.Dot(u)
+	hit = true
+	cD := c.AddX(a, -1).Dot(u)
+	dD := d.AddX(a, -1).Dot(u)
+
+	if cD < eps || dD < eps {
 		return
 	}
-	if hit = MatchPoint(a, d); hit {
-		at = a
-		return
-	}
-	if hit = MatchPoint(b, d); hit {
-		at = b
-		return
-	}
-	if hit = MatchPoint(b, c); hit {
-		at = b
-		return
+	if cD < dD {
+		at = c
+	} else {
+		at = d
 	}
 	return
 }
@@ -582,6 +643,8 @@ func (a Point) prunedInside(p *Shape, skip map[Point]bool) bool {
 				inside = !inside
 				was = is
 			}
+		} else {
+			was = 0
 		}
 		prev = next
 	}
@@ -929,7 +992,7 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		if tmp, err := polys.P[k].dissolve(); err != nil {
 			polys.P = append(polys.P[:k], polys.P[k+1:]...)
 		} else {
-			tmp.Index = fmt.Sprint(p1.Index, "^", k)
+			tmp.Index = fmt.Sprint(p1.Index, "^", p2.Index, ".", k)
 			polys.P[k] = tmp
 			k++
 		}
@@ -1019,7 +1082,7 @@ func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 			} else if p2, err := polys.P[k].dissolve(); err != nil {
 				polys.P = append(polys.P[:k], polys.P[k+1:]...)
 			} else {
-				p2.Index = fmt.Sprint(p1.Index, "%%", p1.Index, k)
+				p2.Index = fmt.Sprint(p1.Index, "%", p2.Index, ".", k)
 				polys.P[k] = p2
 				k++
 			}
