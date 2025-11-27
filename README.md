@@ -21,8 +21,7 @@ See the https://zappem.net/pub/project/polygons/ example.
 Here are some known issues potentially gating release of v1.0.0.
 
 - Observations from [`zappem.net/pub/graphics/hershey`](https://zappem.net/pub/graphics/hershey/) font rendering:
-  - `T` and `Z` in the `astrology` font have a 3-dot issue
-  - `T`, `Z` and `z` in the `rowmant` and `timesrb` fonts have a 3-dot issue
+  - `y#  y` causes the 2nd `y` to be rendered incorrectly in `rowmant` and `timesrb` fonts.
 
 Some things to look into after v1.0.0.
 

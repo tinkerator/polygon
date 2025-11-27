@@ -243,10 +243,14 @@ func (p *Shapes) Include(s ...*Shape) *Shapes {
 	return p
 }
 
+// foundNaN is a separate function to help setting a breakpoint on.
 func foundNaN(text string) {
-	log.Fatalf("nan found: %q", text)
+	log.Fatalf("NaN found: %q", text)
 }
 
+// checkNaN is a function to debug with. I've had a few issues with
+// NaNs being encountered, and wanted some runtime checking for them
+// that I could put a break point on.
 func checkNaN(pts ...Point) {
 	for i := 0; i < len(pts); i++ {
 		pt := pts[i]
@@ -480,6 +484,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	bbCD0, bbCD1 := BB(c, d)
 	left = a.isLeft(c, d)
 	hold = c.isLeft(a, b)
+
 	// Do line bounding boxes not come close to overlapping each other?
 	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
 		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
@@ -489,8 +494,9 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	}
 
 	// Some canonical choices
-	if a == c {
-		// ignore situation where the two lines start from the same place.
+	if MatchPoint(a, c) {
+		// ignore situation where the two lines start from the
+		// same place.
 		return
 	}
 	at = b
@@ -505,7 +511,8 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 		return
 	}
 
-	// Overlapping bounding box (extended slightly by the rounding error protection).
+	// Overlapping bounding box shared by both lines (extended
+	// slightly by the rounding error protection).
 	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
 	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
 	if bb0.X == bb1.X {
@@ -541,7 +548,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 			at = b
 		}
 		// Confirm at falls within the bounding box of both lines.
-		hit = !((bb0.X-Zeroish) > at.X || (bb1.X+Zeroish) < at.X || (bb0.Y-Zeroish) > at.Y || (bb1.Y+Zeroish) < at.Y)
+		hit = !(bb0.X > at.X || bb1.X < at.X || bb0.Y > at.Y || bb1.Y < at.Y)
 		return
 	}
 	// The lines are (anti)parallel
@@ -887,9 +894,8 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 	cA, cB, cAInB, cBInA := 0, 0, 0, 0
 	aInB, bInA = true, true
 	for _, pt := range a.PS {
-		if !hits[pt] {
+		if ins := pt.Inside(b); !hits[pt] || ins {
 			cA++
-			ins := pt.Inside(b)
 			if ins {
 				cAInB++
 			}
@@ -897,20 +903,19 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 		}
 	}
 	for _, pt := range b.PS {
-		if !hits[pt] {
+		if ins := pt.Inside(a); !hits[pt] || ins {
 			cB++
-			ins := pt.Inside(a)
 			if ins {
 				cBInA++
 			}
 			bInA = bInA && ins
 		}
 	}
-	// Getting here, the polygons are known to not be identical,
-	// so they cannot both be inside the other. Also, even if they
-	// look to be inside, perform a (expensive) check that they
-	// don't overlap with non hull points of the other polygon.
-	if aInB = aInB && (cBInA == 0) && (cA != 0); aInB {
+	// Getting here, the polygons are known to not be
+	// identical. However, even if they look to be inside, perform
+	// a (expensive) check that they don't overlap with non hull
+	// points of the other polygon.
+	if aInB {
 		_, inHA := a.Hull()
 		for pt := range inHA {
 			if hits[pt] {
@@ -919,7 +924,7 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 			}
 		}
 	}
-	if bInA = bInA && (cAInB == 0) && (cB != 0); bInA {
+	if bInA {
 		_, inHB := b.Hull()
 		for pt := range inHB {
 			if hits[pt] {
@@ -1054,7 +1059,7 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 // p.P array.
 func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 	islands := false
-	for j := 0; j < len(ref.P); j++ {
+	for j := i + 1; j < len(ref.P); j++ {
 		p1, p2 := p.P[i], ref.P[j]
 		if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 			// Bounding boxes do not overlap.
