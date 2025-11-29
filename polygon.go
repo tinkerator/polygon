@@ -112,29 +112,39 @@ type Shapes struct {
 	P []*Shape
 }
 
+// Debug generates a text dump to os.Stdout of the shape in a
+// simplified listing format or as Go code. As the name suggests, this
+// method can be used for debugging purposes and test case generation.
+// The argument i is used as a suffix for "poly" to name the output
+// listing.
+func (p *Shape) Debug(gocode bool, i int) {
+	name := fmt.Sprint("poly", i)
+	if gocode {
+		fmt.Printf("\t/* %s [%q] */ []Point{\n", name, p.Index)
+	} else {
+		fmt.Printf("%s = # %q\n", name, p.Index)
+	}
+	for _, pt := range p.PS {
+		// More decimal places than the default Zeroish value.
+		if gocode {
+			fmt.Printf("\t\t{%.8f, %.8f},\n", pt.X, pt.Y)
+		} else {
+			fmt.Printf("  %.8f %.8f\n", pt.X, pt.Y)
+		}
+	}
+	if gocode {
+		fmt.Println("\t},")
+	} else {
+		fmt.Println("end")
+	}
+}
+
 // Debug generates a text dump to os.Stdout of the shapes in a
 // simplified listing format or as Go code. As the name suggests, this
 // method can be used for debugging purposes and test case generation.
 func (s *Shapes) Debug(gocode bool) {
 	for i, p := range s.P {
-		name := fmt.Sprint("poly", i)
-		if gocode {
-			fmt.Printf("\t/* %s [%q] */ []Point{\n", name, p.Index)
-		} else {
-			fmt.Printf("%s = # %q\n", name, p.Index)
-		}
-		for _, pt := range p.PS {
-			if gocode {
-				fmt.Printf("\t\t{%.6f, %.6f},\n", pt.X, pt.Y)
-			} else {
-				fmt.Printf("  %.6f %.6f\n", pt.X, pt.Y)
-			}
-		}
-		if gocode {
-			fmt.Println("\t},")
-		} else {
-			fmt.Println("end")
-		}
+		p.Debug(gocode, i)
 	}
 }
 
@@ -486,10 +496,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	hold = c.isLeft(a, b)
 
 	// Do line bounding boxes not come close to overlapping each other?
-	if (bbAB0.X > bbCD1.X && math.Abs(bbAB0.X-bbCD1.X) > Zeroish) ||
-		(bbAB1.X < bbCD0.X && math.Abs(bbAB1.X-bbCD0.X) > Zeroish) ||
-		(bbAB0.Y > bbCD1.Y && math.Abs(bbAB0.Y-bbCD1.Y) > Zeroish) ||
-		(bbAB1.Y < bbCD0.Y && math.Abs(bbAB1.Y-bbCD0.Y) > Zeroish) {
+	if bbAB0.X > bbCD1.X || bbAB1.X < bbCD0.X || bbAB0.Y > bbCD1.Y || bbAB1.Y < bbCD0.Y {
 		return
 	}
 
@@ -664,13 +671,18 @@ func (a Point) Inside(p *Shape) bool {
 }
 
 // Determine what points in p form a convex hull that includes the
-// entire shape also returns the set of omitted points in p that fall
-// within the hull. Note, these omitted points will include those that
-// redundantly reside on the hull itself.
+// entire shape. Also returns the set of omitted points in p that fall
+// within the hull. Note, these omitted points will include points
+// that redundantly reside on the hull itself. NOTE: those redundant
+// points will have a value `false` in the contained map. So, the
+// points will appear in a range over contained, but not in a
+// conditional test of contained[pt]. Use the present boolean if you
+// need to recognize those.
 func (p *Shape) Hull() (hull *Shape, contained map[Point]bool) {
 	hull = p.Duplicate()
 	contained = make(map[Point]bool)
 	revisit := false
+	// Prune pts from to determine the minimal hull
 	for i := 1; i < len(hull.PS); {
 		pt := hull.PS[i]
 		contained[pt] = true
@@ -691,6 +703,36 @@ func (p *Shape) Hull() (hull *Shape, contained map[Point]bool) {
 		}
 		hull.PS = append(hull.PS[:i], hull.PS[i+1:]...)
 		revisit = true
+	}
+	// If a contained point is redundant to what the hull is now
+	// recognized to be, give it a value false.  Find those by
+	// walking p and evaluating each contained point to see if it
+	// falls on a line between the nearest hull points.
+	last := hull.PS[len(hull.PS)-1]
+	j := 0
+	for _, pt := range p.PS {
+		next := hull.PS[j]
+		if pt == next {
+			j++
+			if j >= len(hull.PS) {
+				break
+			}
+			last = next
+			continue
+		}
+		if contained[pt] {
+			disp := next.AddX(last, -1)
+			delta := pt.AddX(last, -1).Dot(disp)
+			if delta < 0 {
+				continue
+			}
+			extreme := disp.Dot(disp)
+			if extreme < delta {
+				continue
+			}
+			calc := last.AddX(disp, delta/extreme)
+			contained[pt] = !MatchPoint(pt, calc)
+		}
 	}
 	return
 }
@@ -912,27 +954,30 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 		}
 	}
 	// Getting here, the polygons are known to not be
-	// identical. However, even if they look to be inside, perform
-	// a (expensive) check that they don't overlap with non hull
-	// points of the other polygon.
-	if aInB {
+	// identical. However, even if one looks to be inside the
+	// other perform an (expensive) check that they don't overlap
+	// with non hull points of the other polygon.
+	if bInA && len(hits) > 1 {
 		_, inHA := a.Hull()
-		for pt := range inHA {
-			if hits[pt] {
-				aInB = false
-				break
-			}
-		}
-	}
-	if bInA {
-		_, inHB := b.Hull()
-		for pt := range inHB {
-			if hits[pt] {
+		for pt := range hits {
+			inside := inHA[pt]
+			if inside {
 				bInA = false
 				break
 			}
 		}
 	}
+	if aInB && len(hits) > 1 {
+		_, inHB := b.Hull()
+		for pt := range hits {
+			inside := inHB[pt]
+			if inside {
+				aInB = false
+				break
+			}
+		}
+	}
+	//	log.Printf("%q:%d,%d=%v %q:%d,%d=%v", a.Index, cAInB, cA, aInB, b.Index, cBInA, cB, bInA)
 	return
 }
 
@@ -1059,7 +1104,7 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 // p.P array.
 func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 	islands := false
-	for j := i + 1; j < len(ref.P); j++ {
+	for j := 0; j < len(ref.P); j++ {
 		p1, p2 := p.P[i], ref.P[j]
 		if p1.MinX > p2.MaxX || p1.MaxX < p2.MinX || p1.MinY > p2.MaxY || p1.MaxY < p2.MinY {
 			// Bounding boxes do not overlap.
