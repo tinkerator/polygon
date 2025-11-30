@@ -517,29 +517,36 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	if hit = MatchPoint(a, d); hit {
 		return
 	}
+	// a's value persists as the default return in the parallel
+	// lines.
 
 	// Overlapping bounding box shared by both lines (extended
 	// slightly by the rounding error protection).
 	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
 	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
-	if bb0.X == bb1.X {
-		bb0.X -= Zeroish / 2
-		bb1.X += Zeroish / 2
+
+	if bb0.X > bb1.X || bb0.Y > bb1.Y {
+		log.Fatalf("bad bb: %v %v", bb0, bb1)
 	}
-	if bb0.Y == bb1.Y {
-		bb0.Y -= Zeroish / 2
-		bb1.Y += Zeroish / 2
+	if math.Abs(bb0.X-bb1.X) < Zeroish {
+		bb0.X -= Zeroish
+		bb1.X += Zeroish
 	}
+	if math.Abs(bb0.Y-bb1.Y) < Zeroish {
+		bb0.Y -= Zeroish
+		bb1.Y += Zeroish
+	}
+
 	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish2 {
 		if math.Abs(dCDX) > Zeroish && math.Abs(dABX) < Zeroish {
-			at.X = a.X
 			mCD := dCDY / dCDX
 			cCD := d.Y - mCD*d.X
+			at.X = a.X
 			at.Y = cCD + mCD*a.X
 		} else if math.Abs(dABX) > Zeroish && math.Abs(dCDX) < Zeroish {
-			at.X = d.X
 			mAB := dABY / dABX
 			cAB := a.Y - mAB*a.X
+			at.X = d.X
 			at.Y = cAB + mAB*d.X
 		} else {
 			mAB := dABY / dABX
@@ -560,6 +567,7 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	}
 	// The lines are (anti)parallel
 	if closeness := (a.Y-d.Y)*dABX - (a.X-d.X)*dABY; math.Abs(closeness) > Zeroish2 {
+		a.X, a.Y = 0, 0
 		return // parallel but not collinear.
 	}
 
