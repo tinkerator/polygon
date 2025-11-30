@@ -20,11 +20,8 @@ See the https://zappem.net/pub/project/polygons/ example.
 
 Here are some known issues potentially gating release of v1.0.0.
 
-- Observations from [`zappem.net/pub/graphics/hershey`](https://zappem.net/pub/graphics/hershey/) font rendering:
-  - `rowmant` and `timesrb` font renders `a` with a split top left corner.
-  - sometimes, these fonts look like they render `@` with the same
-    split at the center right of the low part of the `a` inside the
-    `@` symbol. This is really hard to reproduce.
+- None known. I'm using the code for a while to gain some confidence
+  that I've not missed an important detail.
 
 Some things to look into after v1.0.0.
 

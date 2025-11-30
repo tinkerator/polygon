@@ -501,11 +501,6 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	}
 
 	// Some canonical choices
-	if MatchPoint(a, c) {
-		// ignore situation where the two lines start from the
-		// same place.
-		return
-	}
 	at = b
 	if hit = MatchPoint(b, d); hit {
 		return
@@ -517,25 +512,16 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	if hit = MatchPoint(a, d); hit {
 		return
 	}
+	if hit = MatchPoint(a, c); hit {
+		return
+	}
 	// a's value persists as the default return in the parallel
-	// lines.
+	// lines, below.
 
 	// Overlapping bounding box shared by both lines (extended
 	// slightly by the rounding error protection).
-	bb0 := Point{X: max(bbAB0.X, bbCD0.X), Y: max(bbAB0.Y, bbCD0.Y)}
-	bb1 := Point{X: min(bbAB1.X, bbCD1.X), Y: min(bbAB1.Y, bbCD1.Y)}
-
-	if bb0.X > bb1.X || bb0.Y > bb1.Y {
-		log.Fatalf("bad bb: %v %v", bb0, bb1)
-	}
-	if math.Abs(bb0.X-bb1.X) < Zeroish {
-		bb0.X -= Zeroish
-		bb1.X += Zeroish
-	}
-	if math.Abs(bb0.Y-bb1.Y) < Zeroish {
-		bb0.Y -= Zeroish
-		bb1.Y += Zeroish
-	}
+	bb0 := Point{X: max(bbAB0.X, bbCD0.X) - Zeroish, Y: max(bbAB0.Y, bbCD0.Y) - Zeroish}
+	bb1 := Point{X: min(bbAB1.X, bbCD1.X) + Zeroish, Y: min(bbAB1.Y, bbCD1.Y) + Zeroish}
 
 	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish2 {
 		if math.Abs(dCDX) > Zeroish && math.Abs(dABX) < Zeroish {
@@ -768,9 +754,15 @@ func crossings(p1, p2 *Shape) (hits map[Point]bool, n1, n2 *Shape) {
 			// Close but not equal is a source of
 			// problems, so given a close match treat a as
 			// the anchor point and move c and/or d to it.
-			if MatchPoint(a, c) && a.NotSame(c) {
-				n2.PS[j] = a
-				c = a
+			if MatchPoint(a, c) {
+				if a.NotSame(c) {
+					n2.PS[j] = a
+					c = a
+				}
+				// Special case this one so we don't
+				// infinitely loop here.
+				hits[a] = true
+				continue
 			}
 			if MatchPoint(a, d) && a.NotSame(d) {
 				n2.PS[(j+1)%len(n2.PS)] = a
@@ -830,6 +822,7 @@ func outlines(p1, p2 *Shape, hits map[Point]bool) *Shapes {
 	// only traverse p1 once, and because it is on the outer hull
 	// of the combined shape, we must end there.
 	lockedOn := false
+
 	// keep a record of points that we have consumed for the outer
 	// hull - these won't be in any residual holes.
 	used := make(map[Point]bool)
@@ -1347,8 +1340,8 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 				continue // too short to render
 			}
 			// cut line if it overlaps a hole. Because the
-			// holes do not intersect the the perimeter of
-			// any non-hold polygon, the lines are either
+			// holes do not intersect the perimeter of any
+			// non-hole polygon, the lines are either
 			// broken by a hole into two, or do not
 			// overlap at all.
 			var hits []float64
