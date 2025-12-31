@@ -1345,17 +1345,31 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 			// broken by a hole into two, or do not
 			// overlap at all.
 			var hits []float64
-			for _, hi := range holeI {
-				hole := p.P[hi]
-				if hole.MaxY < level || hole.MinY > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
-					continue
-				}
-				for k := 0; k < len(hole.PS); k++ {
-					a := hole.PS[k]
-					b := hole.PS[(k+1)%len(hole.PS)]
-					hit, _, _, e := intersect(line.From, line.To, a, b)
-					if hit {
-						hits = append(hits, e.X)
+			match = true
+			for match {
+				match = false
+				for _, hi := range holeI {
+					hole := p.P[hi]
+					if hole.MaxY < level || hole.MinY > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
+						continue
+					}
+					for k := 0; k < len(hole.PS); k++ {
+						a := hole.PS[k]
+						if math.Abs(line.From.Y-a.Y) < Zeroish {
+							match = true
+							line.From.Y += half / 13
+							line.To.Y += half / 13
+							hits = nil
+							break
+						}
+						b := hole.PS[(k+1)%len(hole.PS)]
+						hit, _, _, e := intersect(line.From, line.To, a, b)
+						if hit {
+							hits = append(hits, e.X)
+						}
+					}
+					if match {
+						break
 					}
 				}
 			}
@@ -1450,17 +1464,31 @@ func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error
 			// broken by a hole into two, or do not
 			// overlap at all.
 			var hits []float64
-			for _, hi := range holeI {
-				hole := p.P[hi]
-				if hole.MaxX < level || hole.MinX > level || hole.MinY > line.To.Y || hole.MaxY < line.From.Y {
-					continue
-				}
-				for k := 0; k < len(hole.PS); k++ {
-					a := hole.PS[k]
-					b := hole.PS[(k+1)%len(hole.PS)]
-					hit, _, _, e := intersect(line.From, line.To, a, b)
-					if hit {
-						hits = append(hits, e.Y)
+			match = true
+			for match {
+				match = false
+				for _, hi := range holeI {
+					hole := p.P[hi]
+					if hole.MaxX < level || hole.MinX > level || hole.MinY > line.To.Y || hole.MaxY < line.From.Y {
+						continue
+					}
+					for k := 0; k < len(hole.PS); k++ {
+						a := hole.PS[k]
+						if math.Abs(line.From.X-a.X) < Zeroish {
+							match = true
+							line.From.X += half / 13
+							line.To.X += half / 13
+							hits = nil
+							break
+						}
+						b := hole.PS[(k+1)%len(hole.PS)]
+						hit, _, _, e := intersect(line.From, line.To, a, b)
+						if hit {
+							hits = append(hits, e.Y)
+						}
+					}
+					if match {
+						break
 					}
 				}
 			}
