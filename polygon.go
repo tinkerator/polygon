@@ -1225,9 +1225,56 @@ func (p *Shapes) Union() {
 	p = p.Add(holed)
 }
 
+// nip eliminates self-intersections - ingrowing parts of a
+// polygon. These can happen when inflating around consecutive extreme
+// angles or when a concave polygon inflates into itself yielding a
+// shape and potentially holes.
+// TODO: support holes which will change the calling conventions for
+// this function, so not exporting it yet.
+func nip(pts []Point) []Point {
+	last := 0
+	for i := 1; i < len(pts)-2; i++ {
+		a := pts[last]
+		b := pts[i]
+		for j := i + 1; j < len(pts)-1; j++ {
+			c := pts[j]
+			d := pts[j+1]
+			hit, _, _, at := intersect(a, b, c, d)
+			if !hit {
+				continue
+			}
+			// The ith pt (b) is now inside the shape.
+			// The jth pt (c) is also inside the shape.
+			// Any points in between form at least one
+			// hole - which start {b,c,..}. For now, we
+			// drop any holes.
+			pts[i] = at
+			pts = append(pts[0:i+1], pts[j+1:]...)
+			b = at
+			j = i
+		}
+		last = i
+	}
+	return pts
+}
+
 // Inflate inflates an indexed shape by distance, d. Holes are
 // deflated by this amount. If we inflate a circle by d, its radius
-// will increase by that much.
+// will increase by that much. Deflation is performed by calling with
+// a negative d value.
+//
+// When angles are sufficiently extreme inflation may eliminate
+// points. When points are eliminated there is a corner case where no
+// points survive (more common with negative d). In this case, an
+// error is returned.
+//
+// Inflating concave shapes can cause new overlaps to develop and new
+// holes (even within a standalone shape). This function does not
+// account for this, instead it silently drops holes of this sort.
+//
+// [If we develop support for keeping track of such holes, we will add
+// a new API that also performs a Union operation to merge inflated
+// shapes that now overlap.]
 func (p *Shapes) Inflate(n int, d float64) error {
 	if n < 0 || n >= len(p.P) {
 		return fmt.Errorf("invalid polygon=%d in shapes (%d known)", n, len(p.P))
@@ -1238,7 +1285,6 @@ func (p *Shapes) Inflate(n int, d float64) error {
 	s, _ := p.P[n].dissolve()
 	first := s.PS[0]
 	last := s.PS[len(s.PS)-1]
-	d *= 0.5 // Since we add an offset twice per point.
 	var pts []Point
 	for i, this := range s.PS {
 		pre := this
@@ -1247,22 +1293,47 @@ func (p *Shapes) Inflate(n int, d float64) error {
 			next = s.PS[i+1]
 		}
 
-		dX, dY := this.X-last.X, this.Y-last.Y
-		r := math.Sqrt(dX*dX + dY*dY)
-		dX, dY = d*dX/r, d*dY/r
-		this.X += dY
-		this.Y -= dX
+		uLT, err := last.Unit(this)
+		if err != nil {
+			// points too close
+			continue
+		}
+		uTN, err := this.Unit(next)
+		if err != nil {
+			// points too close
+			continue
+		}
 
-		dX, dY = next.X-pre.X, next.Y-pre.Y
-		r = math.Sqrt(dX*dX + dY*dY)
-		dX, dY = d*dX/r, d*dY/r
-		this.X += dY
-		this.Y -= dX
+		pLT := Point{uLT.Y, -uLT.X}
+		pTN := Point{uTN.Y, -uTN.X}
 
+		mLT := Point{
+			0.5*(last.X+this.X) + d*pLT.X,
+			0.5*(last.Y+this.Y) + d*pLT.Y,
+		}
+		mTN := Point{
+			0.5*(this.X+next.X) + d*pTN.X,
+			0.5*(this.Y+next.Y) + d*pTN.Y,
+		}
+
+		// crossing point: pt = mLT + a*uLT = mTN + b*uTN
+		dotUP := uLT.Dot(pTN)
+		if math.Abs(dotUP) < Zeroish2 {
+			// Lines parallel so we drop this point.
+			continue
+		}
+		dotPU := pLT.Dot(uTN)
+		if math.Abs(dotUP) < math.Abs(dotPU) {
+			b := mLT.AddX(mTN, -1).Dot(pLT) / dotPU
+			this = mTN.AddX(uTN, b)
+		} else {
+			a := mTN.AddX(mLT, -1).Dot(pTN) / dotUP
+			this = mLT.AddX(uLT, a)
+		}
 		pts = append(pts, this)
 		last = pre
 	}
-	poly, err := Rationalize(pts)
+	poly, err := Rationalize(nip(pts))
 	if err != nil {
 		return err
 	}

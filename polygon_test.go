@@ -3160,7 +3160,7 @@ func TestMultiUnion(t *testing.T) {
 func TestInflate(t *testing.T) {
 	var s *Shapes
 	s = s.Builder([]Point{{1, 1}, {2, 1}, {2, 2}, {1, 2}}...)
-	if err := s.Inflate(0, 2); err != nil {
+	if err := s.Inflate(0, 1); err != nil {
 		t.Fatalf("unable to inflate shape 0 by 1: %v", err)
 	}
 	expect := []Point{{0, 0}, {3, 0}, {3, 3}, {0, 3}}
