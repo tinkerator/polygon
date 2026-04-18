@@ -112,6 +112,12 @@ type Shapes struct {
 	P []*Shape
 }
 
+// TraceOverlaps enables tracing logic in the initializing of shape
+// index values. By default this is disabled. Enabling it makes
+// aggressive use of the fmt.Sprint*() functions and completely
+// dominate CPU profiles of the resulting slow programs.
+var TraceOverlaps = false
+
 // Debug generates a text dump to os.Stdout of the shape in a
 // simplified listing format or as Go code. As the name suggests, this
 // method can be used for debugging purposes and test case generation.
@@ -287,9 +293,9 @@ func (p *Shapes) Builder(pts ...Point) *Shapes {
 }
 
 // Transform returns a rotated Shapes structure, p is rotated by theta
-// radians (+ve = counterclockwise) around a fixed Point, pt, and
+// radians (+ve = counterclockwise) around a fixed Point, at, and
 // scales the rotated shape by a factor of scale. The scaled and
-// rotated shape is then translated from pt to to.
+// rotated shape is then translated from at to to.
 func (p *Shapes) Transform(at, to Point, theta, scale float64) *Shapes {
 	if p == nil {
 		return nil
@@ -858,7 +864,9 @@ func outlines(p1, p2 *Shape, hits map[Point]bool) *Shapes {
 	if err != nil {
 		log.Fatalf("union polygon failed to rationalize: %v", err)
 	}
-	union.Index = fmt.Sprint("(", p1.Index, "+", p2.Index, ")")
+	if TraceOverlaps {
+		union.Index = fmt.Sprint("(", p1.Index, "+", p2.Index, ")")
+	}
 
 	polys := &Shapes{
 		P: []*Shape{union},
@@ -912,7 +920,9 @@ func outlines(p1, p2 *Shape, hits map[Point]bool) *Shapes {
 		if !dup && len(pts) > 2 {
 			s, err := Rationalize(pts)
 			if err == nil && s.Hole {
-				s.Index = fmt.Sprint("(", p1.Index, "-", p2.Index, "|", len(polys.P)+1)
+				if TraceOverlaps {
+					s.Index = fmt.Sprint("(", p1.Index, "-", p2.Index, "|", len(polys.P)+1)
+				}
 				polys = polys.Include(s)
 			}
 		}
@@ -1016,13 +1026,17 @@ func (p *Shapes) combine(n, m int) (banked int) {
 	hits, p1, p2 := crossings(p1, p2)
 	i1, i2 := insider(hits, p1, p2)
 	if i2 {
-		p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
+		if TraceOverlaps {
+			p1.Index = fmt.Sprint("(", p1.Index, "!", p2.Index, ")")
+		}
 		p.P = append(p.P[:m], p.P[m+1:]...)
 		banked = m
 		return
 	}
 	if i1 {
-		p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
+		if TraceOverlaps {
+			p2.Index = fmt.Sprint("(", p2.Index, "!", p1.Index, ")")
+		}
 		p.P = append(p.P[:n], p.P[n+1:]...)
 		banked = n + 1
 		return
@@ -1043,7 +1057,9 @@ func (p *Shapes) combine(n, m int) (banked int) {
 		if tmp, err := polys.P[k].dissolve(); err != nil {
 			polys.P = append(polys.P[:k], polys.P[k+1:]...)
 		} else {
-			tmp.Index = fmt.Sprint(p1.Index, "^", p2.Index, ".", k)
+			if TraceOverlaps {
+				tmp.Index = fmt.Sprint(p1.Index, "^", p2.Index, ".", k)
+			}
 			polys.P[k] = tmp
 			k++
 		}
@@ -1091,7 +1107,9 @@ func (p *Shapes) Add(s *Shapes) *Shapes {
 		for _, o := range s.P {
 			p = p.Builder(o.PS...)
 			poly := p.P[len(p.P)-1]
-			poly.Index = fmt.Sprintf("%s.%s", poly.Index, o.Index)
+			if TraceOverlaps {
+				poly.Index = fmt.Sprintf("%s.%s", poly.Index, o.Index)
+			}
 		}
 	}
 	p.Reorder()
@@ -1133,7 +1151,9 @@ func (p *Shapes) trimHole(i int, ref, holed *Shapes) (int, *Shapes) {
 			} else if p2, err := polys.P[k].dissolve(); err != nil {
 				polys.P = append(polys.P[:k], polys.P[k+1:]...)
 			} else {
-				p2.Index = fmt.Sprint(p1.Index, "%", p2.Index, ".", k)
+				if TraceOverlaps {
+					p2.Index = fmt.Sprint(p1.Index, "%", p2.Index, ".", k)
+				}
 				polys.P[k] = p2
 				k++
 			}
@@ -1342,32 +1362,25 @@ func (p *Shapes) Inflate(n int, d float64) error {
 	return nil
 }
 
-// Slice returns an array of horizontal (dy=0) lines to render the
-// filled polygon. This can be used to rasterize a shape in some
-// output format. The radial width of a rendered line is d. The lines
-// are drawn from d/2 inside the shape to allow for this imprecision.
-// If s is known to contain holes, and the indices of the holes are
-// provided, then the corresponding polygon holes are used to further
-// shorten the returned lines.
-func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error) {
+func (p *Shapes) slice(i int, scribe, base, sep float64, holeI ...int) (lines []Line, err error) {
 	if p == nil || i < 0 || i >= len(p.P) {
 		err = fmt.Errorf("invalid index %d for shapes", i)
 		return
 	}
-	// Walk from least Y+d/2, to largest Y-d/2.
+	// Walk from least Y+scribe/2, to largest Y-scribe/2.
 	s := p.P[i]
 	if s.Hole {
 		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
 		return
 	}
-	half := d / 2
+	half := scribe / 2
 	bottom, top := s.MinY, s.MaxY
 	if top < bottom {
 		bottom = (top + bottom) / 2
 	}
 	// X range guaranteed to extend outside of polygon.
-	left, right := s.MinX-d, s.MaxX+d
-	for level := bottom + half; level < top; level += half {
+	left, right := s.MinX-half, s.MaxX+half
+	for level := bottom + base; level < top; level += sep {
 		var a, b Point
 		nudge := 0.0
 		var ats []float64
@@ -1464,6 +1477,55 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 		}
 	}
 	return
+}
+
+// Hatch generates a list of Line values that fill the selected
+// polygon, i. The pattern mapped out by the lines are at an angle,
+// theta (counter clockwise from the horizontal axis). The lines come
+// as close to the perimeter of the polygon by scribe/2. The value sep
+// is the separation of the centers of these parallel lines. Holes,
+// holeI..., are used to shorten the lines.
+func (p *Shapes) Hatch(i int, scribe, sep, theta float64, holesI ...int) ([]Line, error) {
+	temp := &Shapes{}
+	temp.P = append(temp.P, p.P[i])
+	var hs []int
+	for i, h := range holesI {
+		temp.P = append(temp.P, p.P[h])
+		hs = append(hs, 1+i)
+	}
+	var zero Point
+	temp = temp.Transform(zero, zero, -theta, 1)
+	lines, err := temp.slice(0, scribe, sep/2, sep, hs...)
+	if err != nil {
+		return nil, err
+	}
+	cTh, sTh := math.Cos(theta), math.Sin(theta)
+	for j, line := range lines {
+		from := Point{
+			line.From.X*cTh - line.From.Y*sTh,
+			line.From.X*sTh + line.From.Y*cTh,
+		}
+		to := Point{
+			line.To.X*cTh - line.To.Y*sTh,
+			line.To.X*sTh + line.To.Y*cTh,
+		}
+		lines[j] = Line{
+			From: from,
+			To:   to,
+		}
+	}
+	return lines, nil
+}
+
+// Slice returns an array of horizontal (dy=0) lines to render the
+// filled polygon. This can be used to rasterize a shape in some
+// output format. The radial width of a rendered line is d. The lines
+// are drawn from d/2 inside the shape to allow for this imprecision.
+// If s is known to contain holes, and the indices of the holes are
+// provided, then the corresponding polygon holes are used to further
+// shorten the returned lines.
+func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error) {
+	return p.slice(i, d, d/2, d/2, holeI...)
 }
 
 // VSlice performs the same operation as Slice, but slices with

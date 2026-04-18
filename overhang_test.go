@@ -7,6 +7,8 @@ import (
 
 func TestOverhang(t *testing.T) {
 	var s *Shapes
+	TraceOverlaps = true
+	defer func() { TraceOverlaps = false }()
 	s = s.Builder(
 		/* poly0 ["11"] */ []Point{
 			{-0.98884142, 2.63796423},
