@@ -1362,7 +1362,7 @@ func (p *Shapes) Inflate(n int, d float64) error {
 	return nil
 }
 
-func (p *Shapes) slice(i int, scribe, base, sep float64, holeI ...int) (lines []Line, err error) {
+func (p *Shapes) slice(i int, scribe, begin, sep float64, holeI ...int) (lines []Line, err error) {
 	if p == nil || i < 0 || i >= len(p.P) {
 		err = fmt.Errorf("invalid index %d for shapes", i)
 		return
@@ -1380,7 +1380,7 @@ func (p *Shapes) slice(i int, scribe, base, sep float64, holeI ...int) (lines []
 	}
 	// X range guaranteed to extend outside of polygon.
 	left, right := s.MinX-half, s.MaxX+half
-	for level := bottom + base; level < top; level += sep {
+	for level := bottom + begin; level < top; level += sep {
 		var a, b Point
 		nudge := 0.0
 		var ats []float64
@@ -1483,9 +1483,10 @@ func (p *Shapes) slice(i int, scribe, base, sep float64, holeI ...int) (lines []
 // polygon, i. The pattern mapped out by the lines are at an angle,
 // theta (counter clockwise from the horizontal axis). The lines come
 // as close to the perimeter of the polygon by scribe/2. The value sep
-// is the separation of the centers of these parallel lines. Holes,
-// holeI..., are used to shorten the lines.
-func (p *Shapes) Hatch(i int, scribe, sep, theta float64, holesI ...int) ([]Line, error) {
+// is the separation of the centers of these parallel lines, and begin
+// is the distance from the (rotated) base that the first slice line
+// is drawn. Holes, holeI..., are used to shorten the lines.
+func (p *Shapes) Hatch(i int, scribe, sep, begin, theta float64, holesI ...int) ([]Line, error) {
 	temp := &Shapes{}
 	temp.P = append(temp.P, p.P[i])
 	var hs []int
@@ -1495,7 +1496,7 @@ func (p *Shapes) Hatch(i int, scribe, sep, theta float64, holesI ...int) ([]Line
 	}
 	var zero Point
 	temp = temp.Transform(zero, zero, -theta, 1)
-	lines, err := temp.slice(0, scribe, sep/2, sep, hs...)
+	lines, err := temp.slice(0, scribe, begin, sep, hs...)
 	if err != nil {
 		return nil, err
 	}
@@ -1531,120 +1532,7 @@ func (p *Shapes) Slice(i int, d float64, holeI ...int) (lines []Line, err error)
 // VSlice performs the same operation as Slice, but slices with
 // vertical (dX=0) lines instead.
 func (p *Shapes) VSlice(i int, d float64, holeI ...int) (lines []Line, err error) {
-	if p == nil || i < 0 || i >= len(p.P) {
-		err = fmt.Errorf("invalid index %d for shapes", i)
-		return
-	}
-	// Walk from least X+d/2, to largest X-d/2.
-	s := p.P[i]
-	if s.Hole {
-		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
-		return
-	}
-	half := d / 2
-	left, right := s.MinX, s.MaxX
-	if right < left {
-		left = (right + left) / 2
-	}
-	// Y range guaranteed to extend outside of polygon.
-	below, above := s.MinY-half, s.MaxY+half
-	for level := left + half; level < right; level += half {
-		var a, b Point
-		nudge := 0.0
-		var ats []float64
-		match := true
-		for match {
-			a := Point{X: level + nudge, Y: below}
-			b := Point{X: level + nudge, Y: above}
-			nudge += half / 13
-			match = false
-			for j := 0; j < len(s.PS); j++ {
-				from := s.PS[j]
-				to := s.PS[(j+1)%len(s.PS)]
-				if math.Abs(from.X-a.X) < Zeroish || math.Abs(to.X-b.X) < Zeroish {
-					// Too ambiguous, so nudge
-					// level and try again.
-					match = true
-					ats = nil
-					break
-				}
-				hit, _, _, e := intersect(a, b, from, to)
-				if !hit {
-					continue
-				}
-				ats = append(ats, e.Y)
-			}
-		}
-		if len(ats) == 0 {
-			continue
-		}
-		sort.Slice(ats, func(i, j int) bool { return ats[i] < ats[j] })
-		if len(ats)&1 == 1 {
-			err = fmt.Errorf("shape %d has odd x-crossings at %f for a=%v b=%v %v", i, level, a, b, ats)
-			return
-		}
-		for j := 0; j < len(ats); j += 2 {
-			line := Line{
-				From: Point{X: level, Y: ats[j] + half},
-				To:   Point{X: level, Y: ats[j+1] - half},
-			}
-			if line.From.Y >= line.To.Y {
-				continue // too short to render
-			}
-			// cut line if it overlaps a hole. Because the
-			// holes do not intersect the the perimeter of
-			// any non-hold polygon, the lines are either
-			// broken by a hole into two, or do not
-			// overlap at all.
-			var hits []float64
-			match = true
-			for match {
-				match = false
-				for _, hi := range holeI {
-					hole := p.P[hi]
-					if hole.MaxX < level || hole.MinX > level || hole.MinY > line.To.Y || hole.MaxY < line.From.Y {
-						continue
-					}
-					for k := 0; k < len(hole.PS); k++ {
-						a := hole.PS[k]
-						if math.Abs(line.From.X-a.X) < Zeroish {
-							match = true
-							line.From.X += half / 13
-							line.To.X += half / 13
-							hits = nil
-							break
-						}
-						b := hole.PS[(k+1)%len(hole.PS)]
-						hit, _, _, e := intersect(line.From, line.To, a, b)
-						if hit {
-							hits = append(hits, e.Y)
-						}
-					}
-					if match {
-						break
-					}
-				}
-			}
-			if len(hits) == 0 {
-				lines = append(lines, line)
-				continue
-			}
-			sort.Slice(hits, func(i, j int) bool { return hits[i] < hits[j] })
-			hits = append(append([]float64{line.From.Y - half}, hits...), line.To.Y+half)
-			for hi := 0; hi < len(hits); hi += 2 {
-				from := hits[hi] + half
-				to := hits[hi+1] - half
-				if from+half > to-half {
-					continue
-				}
-				lines = append(lines, Line{
-					From: Point{X: level, Y: from},
-					To:   Point{X: level, Y: to},
-				})
-			}
-		}
-	}
-	return
+	return p.Hatch(i, d, d/2, d/2, math.Pi/2, holeI...)
 }
 
 // OptimizeLines rearranges the result of (*Shapes).[V]Slice() into

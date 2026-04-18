@@ -3270,15 +3270,15 @@ func TestSlice(t *testing.T) {
 		t.Fatalf("failed to slice: %v", err)
 	}
 	want = []Line{
-		{Point{1.1, 1.1}, Point{1.1, 1.9}},
-		{Point{1.2, 1.1}, Point{1.2, 1.9}},
-		{Point{1.3, 1.1}, Point{1.3, 1.9}},
-		{Point{1.4, 1.1}, Point{1.4, 1.9}},
-		{Point{1.5, 1.1}, Point{1.5, 1.9}},
-		{Point{1.6, 1.1}, Point{1.6, 1.9}},
-		{Point{1.7, 1.1}, Point{1.7, 1.9}},
-		{Point{1.8, 1.1}, Point{1.8, 1.9}},
 		{Point{1.9, 1.1}, Point{1.9, 1.9}},
+		{Point{1.8, 1.1}, Point{1.8, 1.9}},
+		{Point{1.7, 1.1}, Point{1.7, 1.9}},
+		{Point{1.6, 1.1}, Point{1.6, 1.9}},
+		{Point{1.5, 1.1}, Point{1.5, 1.9}},
+		{Point{1.4, 1.1}, Point{1.4, 1.9}},
+		{Point{1.3, 1.1}, Point{1.3, 1.9}},
+		{Point{1.2, 1.1}, Point{1.2, 1.9}},
+		{Point{1.1, 1.1}, Point{1.1, 1.9}},
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("got %d lines, wanted %d: %v, got: %v", len(lines), len(want), want, lines)
