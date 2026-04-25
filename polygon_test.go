@@ -2469,7 +2469,9 @@ func TestIntersect(t *testing.T) {
 		},
 	}
 	for i, v := range vs {
-		hit, left, hold, at := intersect(v.a, v.b, v.c, v.d)
+		ab := Line{v.a, v.b}
+		cd := Line{v.c, v.d}
+		hit, left, hold, at := ab.Intersect(cd)
 		if hold != v.hold {
 			t.Errorf("test=%d: hold got=%v, want=%v", i, hold, v.hold)
 		}

@@ -581,6 +581,15 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	return
 }
 
+// Intersect determines if two line segments (ab) and (cd) intersect
+// (hit) and returns the point that they intersect, at. It also
+// determines if the point a (ab.From) is to the left of the line
+// (cd). The point c (cd.From) is evaluated for its left-ness to (ab)
+// and this value is returned as hold.
+func (ab Line) Intersect(cd Line) (hit bool, left, hold bool, at Point) {
+	return intersect(ab.From, ab.To, cd.From, cd.To)
+}
+
 // dissolve eliminates collinear points from a polygon.
 func (s *Shape) dissolve() (poly *Shape, err error) {
 	if s == nil {
