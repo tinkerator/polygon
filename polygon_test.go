@@ -3397,3 +3397,83 @@ func TestTransform(t *testing.T) {
 
 	}
 }
+
+func TestNegative(t *testing.T) {
+	var s *Shapes
+	s = s.Builder([]Point{
+		{1, 1}, {3, 1}, {3, 3}, {1, 3},
+	}...)
+
+	n, err := s.Negative(0.2)
+	if err != nil {
+		t.Fatalf("unable to generate negative: %v", err)
+	}
+
+	if len(n.P) != 2 {
+		t.Fatalf("expecting 2 polys, got %d", len(n.P))
+	}
+	if h1, h2 := n.P[0].Hole, n.P[1].Hole; h1 || !h2 {
+		t.Fatalf("expect shape=%v, hole=%v", !h1, h2)
+	}
+
+	expect := [][]Point{
+		[]Point{
+			{0.8, 0.8},
+			{3.2, 0.8},
+			{3.2, 3.2},
+			{0.8, 3.2},
+		},
+		[]Point{
+			{1, 1},
+			{1, 3},
+			{3, 3},
+			{3, 1},
+		},
+	}
+
+	for i, s := range expect {
+		for j, pt := range s {
+			if got, want := n.P[i].PS[j], pt; !MatchPoint(got, want) {
+				t.Errorf("unexpected negative point [%d,%d] got=%v want=%v", i, j, got, want)
+			}
+		}
+	}
+
+	s = nil
+	s = s.Builder([]Point{
+		{1, 1}, {1.2, 1}, {1.2, 3}, {1, 3},
+	}...).Builder([]Point{
+		{2.8, 1}, {3, 1}, {3, 3}, {2.8, 3},
+	}...).Builder([]Point{
+		{1, 1}, {3, 1}, {3, 1.2}, {1, 1.2},
+	}...).Builder([]Point{
+		{1, 2.8}, {3, 2.8}, {3, 3}, {1, 3},
+	}...)
+	n, err = s.Negative(0.2)
+	if err != nil {
+		t.Fatalf("unable to negate donut: %v", err)
+	}
+	if len(n.P) != 3 {
+		t.Fatalf("expecting 3 polys, got %d", len(n.P))
+	}
+	if h1, h2, h3 := n.P[0].Hole, n.P[1].Hole, n.P[2].Hole; h1 || !h2 || h3 {
+		t.Fatalf("expect shape=%v, hole=%v, shape=%v", !h1, h2, !h3)
+	}
+
+	expect = append(expect, []Point{
+		{1.2, 1.2},
+		{2.8, 1.2},
+		{2.8, 2.8},
+		{1.2, 2.8},
+	})
+	if len(expect) != len(n.P) {
+		t.Fatalf("expected %d got %d: %#v", len(expect), len(n.P), n.P)
+	}
+	for i, s := range expect {
+		for j, pt := range s {
+			if got, want := n.P[i].PS[j], pt; !MatchPoint(got, want) {
+				t.Errorf("unexpected negative point [%d,%d] got=%v want=%v", i, j, got, want)
+			}
+		}
+	}
+}

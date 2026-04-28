@@ -1254,6 +1254,55 @@ func (p *Shapes) Union() {
 	p = p.Add(holed)
 }
 
+// PickIslands selects the indices of the outer most shapes: omitting
+// any shapes wholly within these islands. If the caller wishes to
+// omit holes, they should double check the returned selection. But
+// for Union outputs, by construction, the outer most selections
+// should always be non-Hole shapes.
+func (p *Shapes) PickIslands() (selection []int) {
+	for i, s := range p.P {
+		inside := false
+		for _, j := range selection {
+			if aInB, _ := s.Inside(p.P[j]); aInB {
+				inside = true
+				break
+			}
+		}
+		if !inside {
+			selection = append(selection, i)
+		}
+	}
+	return
+}
+
+// Negative generates a new set of Union()'d polygons that represent
+// the negative of the polygon shapes, p. That is, wherever a polygon
+// was in p, a hole will be in the returned shapes, and a new shape
+// will envelope those shapes with at least a margin of border.
+func (p *Shapes) Negative(margin float64) (*Shapes, error) {
+	t := p.Duplicate()
+	t.Union()
+	for i := range t.P {
+		t.Invert(i)
+	}
+
+	u := p.Duplicate()
+	for i := range u.P {
+		if err := u.Inflate(i, margin); err != nil {
+			return nil, err
+		}
+	}
+	u.Union()
+
+	islands := u.PickIslands()
+	for _, i := range islands {
+		t = t.Include(u.P[i])
+	}
+	t.Reorder()
+
+	return t, nil
+}
+
 // nip eliminates self-intersections - ingrowing parts of a
 // polygon. These can happen when inflating around consecutive extreme
 // angles or when a concave polygon inflates into itself yielding a
@@ -1382,6 +1431,23 @@ func (p *Shapes) slice(i int, scribe, begin, sep float64, holeI ...int) (lines [
 		err = fmt.Errorf("no overlap with (shape %d) a hole", i)
 		return
 	}
+	// For this shape, we want the island holes only.
+	var holes []int
+	for _, j := range holeI {
+		h := p.P[j]
+		if hInS, _ := h.Inside(s); hInS {
+			island := true
+			for _, k := range holes {
+				inner, _ := h.Inside(p.P[k])
+				if inner {
+					island = false
+				}
+			}
+			if island {
+				holes = append(holes, j)
+			}
+		}
+	}
 	half := scribe / 2
 	bottom, top := s.MinY, s.MaxY
 	if top < bottom {
@@ -1441,7 +1507,7 @@ func (p *Shapes) slice(i int, scribe, begin, sep float64, holeI ...int) (lines [
 			match = true
 			for match {
 				match = false
-				for _, hi := range holeI {
+				for _, hi := range holes {
 					hole := p.P[hi]
 					if hole.MaxY < level || hole.MinY > level || hole.MinX > line.To.X || hole.MaxX < line.From.X {
 						continue
