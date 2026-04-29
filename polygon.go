@@ -17,7 +17,7 @@ import (
 
 // Zeroish is defined to merge points and avoid rounding error
 // problems. The number is chosen to connect anything closer than
-// 0.001 (which is a convenience default for values representing
+// 0.000001 (which is a convenience default for values representing
 // millimeters).
 var Zeroish = 1e-6
 
@@ -530,6 +530,9 @@ func intersect(a, b, c, d Point) (hit bool, left, hold bool, at Point) {
 	bb1 := Point{X: min(bbAB1.X, bbCD1.X) + Zeroish, Y: min(bbAB1.Y, bbCD1.Y) + Zeroish}
 
 	if r := dABX*dCDY - dABY*dCDX; math.Abs(r) > Zeroish2 {
+		if math.Abs(dCDX) < Zeroish && math.Abs(dABX) < Zeroish {
+			return
+		}
 		if math.Abs(dCDX) > Zeroish && math.Abs(dABX) < Zeroish {
 			mCD := dCDY / dCDX
 			cCD := d.Y - mCD*d.X
@@ -997,7 +1000,6 @@ func insider(hits map[Point]bool, a, b *Shape) (aInB, bInA bool) {
 			}
 		}
 	}
-	//	log.Printf("%q:%d,%d=%v %q:%d,%d=%v", a.Index, cAInB, cA, aInB, b.Index, cBInA, cB, bInA)
 	return
 }
 

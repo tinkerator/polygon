@@ -3477,3 +3477,29 @@ func TestNegative(t *testing.T) {
 		}
 	}
 }
+
+// TestCrossings came from the polymark example/lines.go code combining
+// triangles.
+func TestCrossings(t *testing.T) {
+	var p *Shapes
+	p = p.Builder([]Point{
+		{113.26190476190467, 49.76521209587099},
+		{113.26190476190467, 350.2347879041291},
+		{373.4761904761905, 199.99999999999997},
+	}...).Builder([]Point{
+		{96.26190476190467, 35.042780231535545},
+		{113.26190476190467, 35.042780231535545},
+		{113.2619047619048, 364.95721976846454},
+		{96.2619047619048, 364.95721976846454},
+	}...)
+	hits, p1, p2 := crossings(p.P[1], p.P[0])
+	if len(hits) != 2 {
+		t.Fatalf("expecting two crossing points, got %v", hits)
+	}
+	if len(p1.PS) != 6 {
+		t.Fatalf("expecting 6 entries in p1, got %v", p1)
+	}
+	if len(p2.PS) != 3 {
+		t.Errorf("expecting no change to p2, got %v", p2)
+	}
+}
